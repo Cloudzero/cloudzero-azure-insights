@@ -6,7 +6,7 @@
 
 This project integrates Azure Advisor with CloudZero, allowing Azure Advisor cost recommendations to be extracted, converted to CloudZero insights, and uploaded to CloudZero effectively.
 
-> **Note:** This application does not operate on a scheduled basis. Each time you execute the application, it retrieves and uploads Azure cost recommendations that are currently not present in CloudZero.
+> **Note:** This application does not operate on a scheduled basis. Each time you execute the application, it retrieves cost recommendations from Azure Advisor and only uploads the ones that are currently not present in CloudZero.
 
 ## Table of Contents
 
