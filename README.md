@@ -1,6 +1,6 @@
 # Azure Advisor and CloudZero Integration Project
 
-This project integrates Azure Advisor recommendations with CloudZero, allowing insights to be extracted, processed, and managed effectively.
+This project integrates Azure Advisor with CloudZero, allowing Azure Advisor cost recommendations to be extracted, converted to CloudZero insights, and uploaded to CloudZero effectively.
 
 ## Configuration
 
