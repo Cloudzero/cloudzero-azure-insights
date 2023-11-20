@@ -47,7 +47,7 @@ def get_cloudzero_insights_list(api_key):
                 else:
                     break
             else:
-                logging.error(f"Error fetching insights: {response.text}")
+                logging.error(f"Error fetching CloudZero insights: {response.text}")
                 return {"error": response.text}
     except requests.RequestException as e:
         logging.error(f"Request error occurred: {e}")
@@ -107,7 +107,7 @@ def get_advisor_recommendations(client_id, client_secret, tenant_id, subscriptio
     - dict: A dictionary with subscription IDs as keys and their recommendations as values.
     """
 
-    logging.info("Fetching Azure Advisor recommendations for provided subscriptions.")
+    logging.info("Fetching Azure Advisor cost recommendations for provided subscriptions.")
 
     try:
         credentials = ClientSecretCredential(
@@ -124,16 +124,16 @@ def get_advisor_recommendations(client_id, client_secret, tenant_id, subscriptio
                 )
 
                 all_recommendations[subscription_id] = [rec.as_dict() for rec in recommendations]
-                logging.info(f"Retrieved recommendations for subscription ID: {subscription_id}")
+                logging.info(f"Retrieved Azure Advistor cost recommendations for subscription ID: {subscription_id}")
 
             except Exception as e:
-                logging.error(f"Failed to fetch recommendations for subscription ID {subscription_id}: {e}")
+                logging.error(f"Failed to fetch Azure Advistor cost recommendations for subscription ID {subscription_id}: {e}")
                 all_recommendations[subscription_id] = []
 
         return all_recommendations
 
     except Exception as e:
-        logging.error(f"An error occurred while fetching Azure Advisor recommendations: {e}")
+        logging.error(f"An error occurred while fetching Azure Advisor cost recommendations: {e}")
         return {}
 
 
@@ -239,7 +239,7 @@ def filter_azure_advisor_insights(data):
     """
     
     try:
-        logging.info("Starting to filter Azure Advisor insights.")
+        logging.info("Starting to filter Azure Advisor CloudZero insights.")
 
         if not data or "insights" not in data:
             logging.warning("No insights data found or 'insights' key is missing.")
@@ -271,7 +271,7 @@ def filter_azure_advisor_recs(cz_insights, azure_advisor_recs):
     - list of dict: Filtered Azure Advisor recommendations.
     """
     try:
-        logging.info("Starting to filter Azure Advisor recommendations based on CloudZero insights.")
+        logging.info("Starting to filter Azure Advisor recommendations based on existing Azure Advisor CloudZero insights.")
 
         # Extract recommendation IDs from CloudZero insights
         cz_recommendation_ids = set()
@@ -310,13 +310,13 @@ if __name__ == "__main__":
         if not all([client_id, client_secret, tenant_id, cz_api_key]):
             raise ValueError("Environment variables for Azure and CloudZero are not set correctly.")
 
-        logging.info("Fetching subscription IDs...")
+        logging.info("Fetching Azure subscription IDs...")
         subscriptions = list_azure_subscription_ids(client_id, client_secret, tenant_id)
 
-        logging.info("Fetching Azure Advisor recommendations...")
+        logging.info("Fetching Azure Advisor cost recommendations...")
         recommendations = get_advisor_recommendations(client_id, client_secret, tenant_id, subscriptions)
 
-        logging.info("Filtering CloudZero insights...")
+        logging.info("Fetching existing Azure Advisor CloudZero insights...")
         cz_insights = filter_azure_advisor_insights(get_cloudzero_insights_list(cz_api_key))
 
         for subscription_id, recs in recommendations.items():
@@ -324,7 +324,7 @@ if __name__ == "__main__":
 
             for insight in collapse_insights(subscription_id, filtered_recs).values():
                 response = create_cloudzero_insight(cz_api_key, insight)
-                logging.info(f"Insight created: {response}")
+                logging.info(f"Insight created: {response['insight']['title']}")
 
     except Exception as e:
         logging.error(f"An error occurred: {e}")
