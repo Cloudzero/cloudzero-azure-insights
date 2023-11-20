@@ -180,6 +180,11 @@ def collapse_insights(subscription_id, insights):
     """
 
     collapsed = {}
+    
+    if not insights:
+        logging.info("No insights available to collapse.")
+        return collapsed
+
     try:
         logging.info("Starting to collapse insights.")
 
@@ -290,7 +295,7 @@ def filter_azure_advisor_recs(cz_insights, azure_advisor_recs):
             if rec.get("name") not in cz_recommendation_ids
         ]
 
-        logging.info(f"Number of filtered recommendations: {len(filtered_recs)}.")
+        logging.info(f"Filtered recommendations count: {len(filtered_recs)}.")
         return filtered_recs
 
     except Exception as e:
@@ -319,12 +324,16 @@ if __name__ == "__main__":
         logging.info("Fetching existing Azure Advisor CloudZero insights...")
         cz_insights = filter_azure_advisor_insights(get_cloudzero_insights_list(cz_api_key))
 
+        insights_created = 0
         for subscription_id, recs in recommendations.items():
             filtered_recs = filter_azure_advisor_recs(cz_insights, recs)
 
             for insight in collapse_insights(subscription_id, filtered_recs).values():
                 response = create_cloudzero_insight(cz_api_key, insight)
                 logging.info(f"Insight created: {response['insight']['title']}")
+                insights_created += 1
+
+        logging.info(f"Insights created: {insights_created}")
 
     except Exception as e:
         logging.error(f"An error occurred: {e}")
