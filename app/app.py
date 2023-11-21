@@ -1,3 +1,7 @@
+# Copyright (c) 2023 CloudZero - ALL RIGHTS RESERVED - PROPRIETARY AND CONFIDENTIAL
+# Unauthorized copying of this file and/or project, via any medium is strictly prohibited.
+# Direct all questions to legal@cloudzero.com
+
 import json
 import logging
 import os
