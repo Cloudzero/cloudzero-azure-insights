@@ -1,4 +1,4 @@
-# Azure Advisor and CloudZero Integration Project
+# CloudZero and Azure Advisor Integration Project
 
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE-OF-CONDUCT.md)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
@@ -12,7 +12,7 @@ This project integrates Azure Advisor with CloudZero, allowing Azure Advisor cos
 
 Make sure this is updated based on the sections included:
 
-- [Azure Advisor and CloudZero Integration Project](#azure-advisor-and-cloudzero-integration-project)
+- [CloudZero and Azure Advisor Integration Project](#cloudzero-and-azure-advisor-integration-project)
   - [Table of Contents](#table-of-contents)
   - [Installation](#installation)
     - [Prerequisites](#prerequisites)
