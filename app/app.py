@@ -107,7 +107,7 @@ def get_advisor_recommendations(client_id, client_secret, tenant_id, subscriptio
     - tenant_id (str): Azure tenant ID.
 
     Returns:
-    - dict: A dictionary with subscription IDs as keys and their recommendations as values.
+    - list: A list Azure Advisor recommendations.
     """
 
     logging.info("Fetching Azure Advisor cost recommendations for provided subscriptions.")
@@ -117,7 +117,7 @@ def get_advisor_recommendations(client_id, client_secret, tenant_id, subscriptio
             client_id=client_id, client_secret=client_secret, tenant_id=tenant_id
         )
 
-        all_recommendations = {}
+        all_recommendations = []
 
         for subscription_id in subscriptions:
             try:
@@ -126,18 +126,17 @@ def get_advisor_recommendations(client_id, client_secret, tenant_id, subscriptio
                     filter="Category eq 'Cost'"
                 )
 
-                all_recommendations[subscription_id] = [rec.as_dict() for rec in recommendations]
+                all_recommendations.extend([rec.as_dict() for rec in recommendations])
                 logging.info(f"Retrieved Azure Advistor cost recommendations for subscription ID: {subscription_id}")
 
             except Exception as e:
                 logging.error(f"Failed to fetch Azure Advistor cost recommendations for subscription ID {subscription_id}: {e}")
-                all_recommendations[subscription_id] = []
 
         return all_recommendations
 
     except Exception as e:
         logging.error(f"An error occurred while fetching Azure Advisor cost recommendations: {e}")
-        return {}
+        return []
 
 
 def create_cloudzero_insight(api_key, data):
@@ -170,16 +169,15 @@ def create_cloudzero_insight(api_key, data):
         return {"error": str(e)}
 
 
-def collapse_insights(subscription_id, insights):
+def collapse_insights(insights):
     """
     Collapses insights with the same title into a single record.
 
     Args:
-    - subscription_id (str): The Azure subscription ID.
     - insights (list of dict): List of insight records.
 
     Returns:
-    - list of dict: A new list of collapsed insight records.
+    - dict: A new list of collapsed insight records.
     """
 
     collapsed = {}
@@ -198,7 +196,7 @@ def collapse_insights(subscription_id, insights):
                     collapsed[title] = {
                         "title": title,
                         "cost_impact": insight["extended_properties"]["savingsAmount"],
-                        "description": f"Azure Subscription ID: {subscription_id}\n\nAzure Advisor Recommendation ID: {insight['name']}\n\n"
+                        "description": f"Azure Subscription ID: {insight['extended_properties']['subId']}\n\nAzure Advisor Recommendation ID: {insight['name']}\n\n"
                         + str(insight["extended_properties"].copy())
                         .replace("'", "")
                         .replace("{", "")
@@ -215,7 +213,7 @@ def collapse_insights(subscription_id, insights):
                         + int(insight["extended_properties"]["savingsAmount"])
                     )
                     collapsed[title]["description"] += (
-                        f"\n\n---\n\nAzure Subscription ID: {subscription_id}\n\nAzure Advisor Recommendation ID: {insight['name']}\n\n"
+                        f"\n\n---\n\nAzure Subscription ID: {insight['extended_properties']['subId']}\n\nAzure Advisor Recommendation ID: {insight['name']}\n\n"
                         + str(insight["extended_properties"])
                         .replace("'", "")
                         .replace("{", "")
@@ -327,14 +325,14 @@ if __name__ == "__main__":
         logging.info("Fetching existing Azure Advisor CloudZero insights...")
         cz_insights = filter_azure_advisor_insights(get_cloudzero_insights_list(cz_api_key))
 
-        insights_created = 0
-        for subscription_id, recs in recommendations.items():
-            filtered_recs = filter_azure_advisor_recs(cz_insights, recs)
+        logging.info("Filtering Azure Advisor recommendations...")
+        filtered_recs = filter_azure_advisor_recs(cz_insights, recommendations)
 
-            for insight in collapse_insights(subscription_id, filtered_recs).values():
-                response = create_cloudzero_insight(cz_api_key, insight)
-                logging.info(f"Insight created: {response['insight']['title']}")
-                insights_created += 1
+        insights_created = 0
+        for insight in collapse_insights(filtered_recs).values():
+            response = create_cloudzero_insight(cz_api_key, insight)
+            logging.info(f"Insight created: {response['insight']['title']}")
+            insights_created += 1
 
         logging.info(f"Insights created: {insights_created}")
 
