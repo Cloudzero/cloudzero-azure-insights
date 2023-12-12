@@ -222,6 +222,8 @@ def collapse_insights(insights):
                     )
             except KeyError as ke:
                 logging.warning(f"Key error encountered in insight: {ke}")
+                logging.info(title)
+                logging.info(insight["extended_properties"].keys())
             except Exception as e:
                 logging.error(f"Unexpected error during processing an insight: {e}")
 
@@ -245,7 +247,7 @@ def filter_azure_advisor_insights(data):
     """
     
     try:
-        logging.info("Starting to filter Azure Advisor CloudZero insights.")
+        logging.info("Starting to filter for Azure Advisor CloudZero insights.")
 
         if not data or "insights" not in data:
             logging.warning("No insights data found or 'insights' key is missing.")
@@ -257,11 +259,11 @@ def filter_azure_advisor_insights(data):
             if insight.get("source") == "Azure Advisor"
         ]
 
-        logging.info(f"Filtered insights count: {len(filtered_insights)}.")
+        logging.info(f"Azure Advisor CloudZero insights count: {len(filtered_insights)}.")
         return filtered_insights
 
     except Exception as e:
-        logging.error(f"An error occurred while filtering Azure Advisor insights: {e}")
+        logging.error(f"An error occurred while filtering for Azure Advisor insights: {e}")
         return []
 
 
@@ -277,7 +279,7 @@ def filter_azure_advisor_recs(cz_insights, azure_advisor_recs):
     - list of dict: Filtered Azure Advisor recommendations.
     """
     try:
-        logging.info("Starting to filter Azure Advisor recommendations based on existing Azure Advisor CloudZero insights.")
+        logging.info(f"Starting to filter {len(azure_advisor_recs)} Azure Advisor recommendations based on existing Azure Advisor CloudZero insights.")
 
         # Extract recommendation IDs from CloudZero insights
         cz_recommendation_ids = set()
@@ -296,7 +298,7 @@ def filter_azure_advisor_recs(cz_insights, azure_advisor_recs):
             if rec.get("name") not in cz_recommendation_ids
         ]
 
-        logging.info(f"Filtered recommendations count: {len(filtered_recs)}.")
+        logging.info(f"Remaining recommendations: {len(filtered_recs)}.")
         return filtered_recs
 
     except Exception as e:
