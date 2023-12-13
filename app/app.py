@@ -162,7 +162,7 @@ def create_cloudzero_insight(api_key, data):
             logging.info("CloudZero insight created successfully.")
             return response.json()
         else:
-            logging.error(f"Failed to create CloudZero insight. Status code: {response.status_code}, Response: {response.text}")
+            logging.error(f"Failed to create CloudZero insight. Status code: {response.status_code}, Response: {response.text}, Payload: {data}")
             return {"error": response.text}
 
     except Exception as e:
@@ -314,36 +314,39 @@ def filter_azure_advisor_recs(cz_insights, azure_advisor_recs):
 if __name__ == "__main__":
     logging.info("Starting application...")
 
-    try:
-        client_id = os.environ.get("AZURE_CLIENT_ID")
-        client_secret = os.environ.get("AZURE_CLIENT_SECRET")
-        tenant_id = os.environ.get("AZURE_TENANT_ID")
-        cz_api_key = os.environ.get("CLOUDZERO_API_KEY")
+    client_id = os.environ.get("AZURE_CLIENT_ID")
+    client_secret = os.environ.get("AZURE_CLIENT_SECRET")
+    tenant_id = os.environ.get("AZURE_TENANT_ID")
+    cz_api_key = os.environ.get("CLOUDZERO_API_KEY")
 
-        if not all([client_id, client_secret, tenant_id, cz_api_key]):
-            raise ValueError("Environment variables for Azure and CloudZero are not set correctly.")
+    if not all([client_id, client_secret, tenant_id, cz_api_key]):
+        raise ValueError("Environment variables for Azure and CloudZero are not set correctly.")
 
-        logging.info("Fetching Azure subscription IDs...")
-        subscriptions = list_azure_subscription_ids(client_id, client_secret, tenant_id)
+    logging.info("Fetching Azure subscription IDs...")
+    subscriptions = list_azure_subscription_ids(client_id, client_secret, tenant_id)
 
-        logging.info("Fetching Azure Advisor cost recommendations...")
-        recommendations = get_advisor_recommendations(client_id, client_secret, tenant_id, subscriptions)
+    logging.info("Fetching Azure Advisor cost recommendations...")
+    recommendations = get_advisor_recommendations(client_id, client_secret, tenant_id, subscriptions)
 
-        logging.info("Fetching existing Azure Advisor CloudZero insights...")
-        cz_insights = filter_azure_advisor_insights(get_cloudzero_insights_list(cz_api_key))
+    logging.info("Fetching existing Azure Advisor CloudZero insights...")
+    cz_insights = filter_azure_advisor_insights(get_cloudzero_insights_list(cz_api_key))
 
-        logging.info("Filtering Azure Advisor recommendations...")
-        filtered_recs = filter_azure_advisor_recs(cz_insights, recommendations)
+    logging.info("Filtering Azure Advisor recommendations...")
+    filtered_recs = filter_azure_advisor_recs(cz_insights, recommendations)
 
-        insights_created = 0
-        for rec in collapse_recommendations(filtered_recs).values():
-            response = create_cloudzero_insight(cz_api_key, rec)
+    insights_created = 0
+    insights_failed = 0
+    for rec in collapse_recommendations(filtered_recs).values():
+        response = create_cloudzero_insight(cz_api_key, rec)
+
+        if "error" in response:
+            logging.info(f"Insight NOT created: {rec['title']}")
+            insights_failed += 1
+
+        else:
             logging.info(f"Insight created: {response['insight']['title']}")
             insights_created += 1
 
-        logging.info(f"Insights created: {insights_created}")
-
-    except Exception as e:
-        logging.error(f"An error occurred: {e}")
+    logging.info(f"Insights created: {insights_created}/{insights_created + insights_failed}")
 
     logging.info("Application finished.")
