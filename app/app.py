@@ -223,7 +223,7 @@ def collapse_insights(insights):
             except KeyError as ke:
                 logging.warning(f"Key error encountered in insight: {ke}")
                 logging.info(title)
-                logging.info(insight["extended_properties"].keys())
+                logging.info(insight["extended_properties"].keys() if "extended_properties" in insight else insight.keys())
             except Exception as e:
                 logging.error(f"Unexpected error during processing an insight: {e}")
 
