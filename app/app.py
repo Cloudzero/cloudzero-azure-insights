@@ -197,7 +197,7 @@ def collapse_insights(insights):
                         "title": title,
                         "cost_impact": f"{insight['extended_properties']['savingsAmount'] if 'savingsAmount' in insight['extended_properties'] else '0'}",
                         "description": f"Azure Subscription ID: {insight['id'].split('/')[2]}\n\nAzure Advisor Recommendation ID: {insight['name']}\n\n"
-                        + str(insight["extended_properties"].copy())
+                        + str(insight["extended_properties"].copy() if "extended_properties" in insight else insight["short_description"])
                         .replace("'", "")
                         .replace("{", "")
                         .replace("}", "")
@@ -209,12 +209,12 @@ def collapse_insights(insights):
                     }
                 else:
                     collapsed[title]["cost_impact"] = str(
-                        int(collapsed[title]["cost_impact"])
-                        + int(insight["extended_properties"]["savingsAmount"] if 'savingsAmount' in insight['extended_properties'] else '0')
+                        float(collapsed[title]["cost_impact"])
+                        + float(insight["extended_properties"]["savingsAmount"] if 'savingsAmount' in insight['extended_properties'] else '0')
                     )
                     collapsed[title]["description"] += (
                         f"\n\n---\n\nAzure Subscription ID: {insight['id'].split('/')[2]}\n\nAzure Advisor Recommendation ID: {insight['name']}\n\n"
-                        + str(insight["extended_properties"])
+                        + str(insight["extended_properties"] if "extended_properties" in insight else insight["short_description"])
                         .replace("'", "")
                         .replace("{", "")
                         .replace("}", "")
