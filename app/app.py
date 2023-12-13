@@ -187,7 +187,7 @@ def collapse_insights(insights):
         return collapsed
 
     try:
-        logging.info("Starting to collapse insights.")
+        logging.info(f"Starting to collapse {len(insights)} insights.")
 
         for insight in insights:
             try:
@@ -227,7 +227,7 @@ def collapse_insights(insights):
             except Exception as e:
                 logging.error(f"Unexpected error during processing an insight: {e}")
 
-        logging.info("Successfully collapsed insights.")
+        logging.info(f"Successfully collapsed {len(insights)} insights to {len(collapsed)}.")
         return collapsed
 
     except Exception as e:
@@ -279,7 +279,11 @@ def filter_azure_advisor_recs(cz_insights, azure_advisor_recs):
     - list of dict: Filtered Azure Advisor recommendations.
     """
     try:
-        logging.info(f"Starting to filter {len(azure_advisor_recs)} Azure Advisor recommendations based on existing Azure Advisor CloudZero insights.")
+        logging.info(f"Starting to filter {len(azure_advisor_recs)} Azure Advisor recommendations based on existing Azure Advisor CloudZero insights to prevent duplicates.")
+
+        if not cz_insights:
+            logging.info("No existing Azure Advisor CloudZero insights.")
+            return azure_advisor_recs
 
         # Extract recommendation IDs from CloudZero insights
         cz_recommendation_ids = set()
