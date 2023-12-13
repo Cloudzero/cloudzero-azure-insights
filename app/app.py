@@ -28,6 +28,7 @@ def get_cloudzero_insights_list(api_key):
 
     logging.info("Fetching CloudZero insights list...")
 
+    # base_url = "https://api.cloudzero.com/v2/insights?source=azure%20advisor"
     base_url = "https://api.cloudzero.com/v2/insights"
     headers = {"Authorization": api_key, "Content-Type": "application/json"}
 
@@ -195,7 +196,7 @@ def collapse_recommendations(recs):
                 if title not in collapsed:
                     collapsed[title] = {
                         "title": title,
-                        "cost_impact": f"{rec['extended_properties']['savingsAmount'] if 'savingsAmount' in rec['extended_properties'] else '0'}",
+                        "cost_impact": f"{rec['extended_properties']['savingsAmount'] if 'extended_properties' in rec and 'savingsAmount' in rec['extended_properties'] else '0'}",
                         "description": f"Azure Subscription ID: {rec['id'].split('/')[2]}\n\nAzure Advisor Recommendation ID: {rec['name']}\n\n"
                         + str(rec["extended_properties"].copy() if "extended_properties" in rec else rec["short_description"])
                         .replace("'", "")
@@ -210,7 +211,7 @@ def collapse_recommendations(recs):
                 else:
                     collapsed[title]["cost_impact"] = str(
                         float(collapsed[title]["cost_impact"])
-                        + float(rec["extended_properties"]["savingsAmount"] if 'savingsAmount' in rec['extended_properties'] else '0')
+                        + float(rec["extended_properties"]["savingsAmount"] if 'extended_properties' in rec and 'savingsAmount' in rec['extended_properties'] else '0')
                     )
                     collapsed[title]["description"] += (
                         f"\n\n---\n\nAzure Subscription ID: {rec['id'].split('/')[2]}\n\nAzure Advisor Recommendation ID: {rec['name']}\n\n"
