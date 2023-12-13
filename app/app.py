@@ -169,35 +169,35 @@ def create_cloudzero_insight(api_key, data):
         return {"error": str(e)}
 
 
-def collapse_insights(insights):
+def collapse_recommendations(recs):
     """
-    Collapses insights with the same title into a single record.
+    Collapses recommendations with the same title into a single record.
 
     Args:
-    - insights (list of dict): List of insight records.
+    - recs (list of dict): List of recommendation records.
 
     Returns:
-    - dict: A new list of collapsed insight records.
+    - dict: A new list of collapsed recommendation records.
     """
 
     collapsed = {}
     
-    if not insights:
-        logging.info("No insights available to collapse.")
+    if not recs:
+        logging.info("No Azure Advisor recommendations available to collapse.")
         return collapsed
 
     try:
-        logging.info(f"Starting to collapse {len(insights)} insights.")
+        logging.info(f"Starting to collapse {len(recs)} Azure Advisor recommendations.")
 
-        for insight in insights:
+        for rec in recs:
             try:
-                title = insight["short_description"]["problem"]
+                title = rec["short_description"]["problem"]
                 if title not in collapsed:
                     collapsed[title] = {
                         "title": title,
-                        "cost_impact": f"{insight['extended_properties']['savingsAmount'] if 'savingsAmount' in insight['extended_properties'] else '0'}",
-                        "description": f"Azure Subscription ID: {insight['id'].split('/')[2]}\n\nAzure Advisor Recommendation ID: {insight['name']}\n\n"
-                        + str(insight["extended_properties"].copy() if "extended_properties" in insight else insight["short_description"])
+                        "cost_impact": f"{rec['extended_properties']['savingsAmount'] if 'savingsAmount' in rec['extended_properties'] else '0'}",
+                        "description": f"Azure Subscription ID: {rec['id'].split('/')[2]}\n\nAzure Advisor Recommendation ID: {rec['name']}\n\n"
+                        + str(rec["extended_properties"].copy() if "extended_properties" in rec else rec["short_description"])
                         .replace("'", "")
                         .replace("{", "")
                         .replace("}", "")
@@ -210,28 +210,28 @@ def collapse_insights(insights):
                 else:
                     collapsed[title]["cost_impact"] = str(
                         float(collapsed[title]["cost_impact"])
-                        + float(insight["extended_properties"]["savingsAmount"] if 'savingsAmount' in insight['extended_properties'] else '0')
+                        + float(rec["extended_properties"]["savingsAmount"] if 'savingsAmount' in rec['extended_properties'] else '0')
                     )
                     collapsed[title]["description"] += (
-                        f"\n\n---\n\nAzure Subscription ID: {insight['id'].split('/')[2]}\n\nAzure Advisor Recommendation ID: {insight['name']}\n\n"
-                        + str(insight["extended_properties"] if "extended_properties" in insight else insight["short_description"])
+                        f"\n\n---\n\nAzure Subscription ID: {rec['id'].split('/')[2]}\n\nAzure Advisor Recommendation ID: {rec['name']}\n\n"
+                        + str(rec["extended_properties"] if "extended_properties" in rec else rec["short_description"])
                         .replace("'", "")
                         .replace("{", "")
                         .replace("}", "")
                         .replace(",", "\n\n")
                     )
             except KeyError as ke:
-                logging.warning(f"Key error encountered in insight: {ke}")
+                logging.warning(f"Key error encountered in recommendation: {ke}")
                 logging.info(title)
-                logging.info(insight["extended_properties"].keys() if "extended_properties" in insight else insight.keys())
+                logging.info(rec["extended_properties"].keys() if "extended_properties" in rec else rec.keys())
             except Exception as e:
-                logging.error(f"Unexpected error during processing an insight: {e}")
+                logging.error(f"Unexpected error during processing a recommendation: {e}")
 
-        logging.info(f"Successfully collapsed {len(insights)} insights to {len(collapsed)}.")
+        logging.info(f"Successfully collapsed {len(recs)} Azure Advisor recommendations to {len(collapsed)}.")
         return collapsed
 
     except Exception as e:
-        logging.error(f"An error occurred while collapsing insights: {e}")
+        logging.error(f"An error occurred while collapsing Azure Advisor recommendations: {e}")
         return {}
 
 
@@ -335,8 +335,8 @@ if __name__ == "__main__":
         filtered_recs = filter_azure_advisor_recs(cz_insights, recommendations)
 
         insights_created = 0
-        for insight in collapse_insights(filtered_recs).values():
-            response = create_cloudzero_insight(cz_api_key, insight)
+        for rec in collapse_recommendations(filtered_recs).values():
+            response = create_cloudzero_insight(cz_api_key, rec)
             logging.info(f"Insight created: {response['insight']['title']}")
             insights_created += 1
 
