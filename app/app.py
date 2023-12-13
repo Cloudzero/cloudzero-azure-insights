@@ -162,7 +162,7 @@ def create_cloudzero_insight(api_key, data):
             logging.info("CloudZero insight created successfully.")
             return response.json()
         else:
-            logging.error(f"Failed to create CloudZero insight. Status code: {response.status_code}, Response: {response.text}, Payload: {data}")
+            logging.error(f"Failed to create CloudZero insight. Status code: {response.status_code}, Response: {response.text}")
             return {"error": response.text}
 
     except Exception as e:
