@@ -195,8 +195,8 @@ def collapse_insights(insights):
                 if title not in collapsed:
                     collapsed[title] = {
                         "title": title,
-                        "cost_impact": insight["extended_properties"]["savingsAmount"],
-                        "description": f"Azure Subscription ID: {insight['extended_properties']['subId']}\n\nAzure Advisor Recommendation ID: {insight['name']}\n\n"
+                        "cost_impact": f"{insight['extended_properties']['savingsAmount'] if 'savingsAmount' in insight['extended_properties'] else '0'}",
+                        "description": f"Azure Subscription ID: {insight['id'].split('/')[2]}\n\nAzure Advisor Recommendation ID: {insight['name']}\n\n"
                         + str(insight["extended_properties"].copy())
                         .replace("'", "")
                         .replace("{", "")
@@ -210,10 +210,10 @@ def collapse_insights(insights):
                 else:
                     collapsed[title]["cost_impact"] = str(
                         int(collapsed[title]["cost_impact"])
-                        + int(insight["extended_properties"]["savingsAmount"])
+                        + int(insight["extended_properties"]["savingsAmount"] if 'savingsAmount' in insight['extended_properties'] else '0')
                     )
                     collapsed[title]["description"] += (
-                        f"\n\n---\n\nAzure Subscription ID: {insight['extended_properties']['subId']}\n\nAzure Advisor Recommendation ID: {insight['name']}\n\n"
+                        f"\n\n---\n\nAzure Subscription ID: {insight['id'].split('/')[2]}\n\nAzure Advisor Recommendation ID: {insight['name']}\n\n"
                         + str(insight["extended_properties"])
                         .replace("'", "")
                         .replace("{", "")
