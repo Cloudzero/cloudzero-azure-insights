@@ -12,7 +12,9 @@ from azure.mgmt.advisor import AdvisorManagementClient
 
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 
 
 def get_cloudzero_insights_list(api_key):
@@ -28,8 +30,7 @@ def get_cloudzero_insights_list(api_key):
 
     logging.info("Fetching CloudZero insights list...")
 
-    # base_url = "https://api.cloudzero.com/v2/insights?source=azure%20advisor"
-    base_url = "https://api.cloudzero.com/v2/insights"
+    base_url = "https://api.cloudzero.com/v2/insights?source=azure%20advisor"
     headers = {"Authorization": api_key, "Content-Type": "application/json"}
 
     insights = []
@@ -80,15 +81,15 @@ def list_azure_subscription_ids(client_id, client_secret, tenant_id):
 
     try:
         credentials = ClientSecretCredential(
-            client_id=client_id,
-            client_secret=client_secret,
-            tenant_id=tenant_id
+            client_id=client_id, client_secret=client_secret, tenant_id=tenant_id
         )
 
         subscription_client = SubscriptionClient(credentials)
 
         subscriptions = subscription_client.subscriptions.list()
-        subscription_ids = [subscription.subscription_id for subscription in subscriptions]
+        subscription_ids = [
+            subscription.subscription_id for subscription in subscriptions
+        ]
         logging.info(f"Retrieved {len(subscription_ids)} Azure subscription IDs.")
 
         return subscription_ids
@@ -111,7 +112,9 @@ def get_advisor_recommendations(client_id, client_secret, tenant_id, subscriptio
     - list: A list Azure Advisor recommendations.
     """
 
-    logging.info("Fetching Azure Advisor cost recommendations for provided subscriptions.")
+    logging.info(
+        "Fetching Azure Advisor cost recommendations for provided subscriptions."
+    )
 
     try:
         credentials = ClientSecretCredential(
@@ -128,15 +131,21 @@ def get_advisor_recommendations(client_id, client_secret, tenant_id, subscriptio
                 )
 
                 all_recommendations.extend([rec.as_dict() for rec in recommendations])
-                logging.info(f"Retrieved Azure Advistor cost recommendations for subscription ID: {subscription_id}")
+                logging.info(
+                    f"Retrieved Azure Advistor cost recommendations for subscription ID: {subscription_id}"
+                )
 
             except Exception as e:
-                logging.error(f"Failed to fetch Azure Advistor cost recommendations for subscription ID {subscription_id}: {e}")
+                logging.error(
+                    f"Failed to fetch Azure Advistor cost recommendations for subscription ID {subscription_id}: {e}"
+                )
 
         return all_recommendations
 
     except Exception as e:
-        logging.error(f"An error occurred while fetching Azure Advisor cost recommendations: {e}")
+        logging.error(
+            f"An error occurred while fetching Azure Advisor cost recommendations: {e}"
+        )
         return []
 
 
@@ -162,7 +171,9 @@ def create_cloudzero_insight(api_key, data):
             logging.info("CloudZero insight created successfully.")
             return response.json()
         else:
-            logging.error(f"Failed to create CloudZero insight. Status code: {response.status_code}, Response: {response.text}")
+            logging.error(
+                f"Failed to create CloudZero insight. Status code: {response.status_code}, Response: {response.text}"
+            )
             return {"error": response.text}
 
     except Exception as e:
@@ -182,7 +193,7 @@ def collapse_recommendations(recs):
     """
 
     collapsed = {}
-    
+
     if not recs:
         logging.info("No Azure Advisor recommendations available to collapse.")
         return collapsed
@@ -198,7 +209,11 @@ def collapse_recommendations(recs):
                         "title": title,
                         "cost_impact": f"{rec['extended_properties']['savingsAmount'] if 'extended_properties' in rec and 'savingsAmount' in rec['extended_properties'] else '0'}",
                         "description": f"Azure Subscription ID: {rec['id'].split('/')[2]}\n\nAzure Advisor Recommendation ID: {rec['name']}\n\n"
-                        + str(rec["extended_properties"].copy() if "extended_properties" in rec else rec["short_description"])
+                        + str(
+                            rec["extended_properties"].copy()
+                            if "extended_properties" in rec
+                            else rec["short_description"]
+                        )
                         .replace("'", "")
                         .replace("{", "")
                         .replace("}", "")
@@ -211,11 +226,20 @@ def collapse_recommendations(recs):
                 else:
                     collapsed[title]["cost_impact"] = str(
                         float(collapsed[title]["cost_impact"])
-                        + float(rec["extended_properties"]["savingsAmount"] if 'extended_properties' in rec and 'savingsAmount' in rec['extended_properties'] else '0')
+                        + float(
+                            rec["extended_properties"]["savingsAmount"]
+                            if "extended_properties" in rec
+                            and "savingsAmount" in rec["extended_properties"]
+                            else "0"
+                        )
                     )
                     collapsed[title]["description"] += (
                         f"\n\n---\n\nAzure Subscription ID: {rec['id'].split('/')[2]}\n\nAzure Advisor Recommendation ID: {rec['name']}\n\n"
-                        + str(rec["extended_properties"] if "extended_properties" in rec else rec["short_description"])
+                        + str(
+                            rec["extended_properties"]
+                            if "extended_properties" in rec
+                            else rec["short_description"]
+                        )
                         .replace("'", "")
                         .replace("{", "")
                         .replace("}", "")
@@ -224,48 +248,26 @@ def collapse_recommendations(recs):
             except KeyError as ke:
                 logging.warning(f"Key error encountered in recommendation: {ke}")
                 logging.info(title)
-                logging.info(rec["extended_properties"].keys() if "extended_properties" in rec else rec.keys())
+                logging.info(
+                    rec["extended_properties"].keys()
+                    if "extended_properties" in rec
+                    else rec.keys()
+                )
             except Exception as e:
-                logging.error(f"Unexpected error during processing a recommendation: {e}")
+                logging.error(
+                    f"Unexpected error during processing a recommendation: {e}"
+                )
 
-        logging.info(f"Successfully collapsed {len(recs)} Azure Advisor recommendations to {len(collapsed)}.")
+        logging.info(
+            f"Successfully collapsed {len(recs)} Azure Advisor recommendations to {len(collapsed)}."
+        )
         return collapsed
 
     except Exception as e:
-        logging.error(f"An error occurred while collapsing Azure Advisor recommendations: {e}")
+        logging.error(
+            f"An error occurred while collapsing Azure Advisor recommendations: {e}"
+        )
         return {}
-
-
-def filter_azure_advisor_insights(data):
-    """
-    Filters insights to return only those from 'azure:azure advisor'.
-
-    Args:
-    - data (dict): The data structure containing insights.
-
-    Returns:
-    - list: A list of insights filtered to include only those from 'azure:azure advisor'.
-    """
-    
-    try:
-        logging.info("Starting to filter for Azure Advisor CloudZero insights.")
-
-        if not data or "insights" not in data:
-            logging.warning("No insights data found or 'insights' key is missing.")
-            return []
-
-        filtered_insights = [
-            insight
-            for insight in data["insights"]
-            if insight.get("source") == "Azure Advisor"
-        ]
-
-        logging.info(f"Azure Advisor CloudZero insights count: {len(filtered_insights)}.")
-        return filtered_insights
-
-    except Exception as e:
-        logging.error(f"An error occurred while filtering for Azure Advisor insights: {e}")
-        return []
 
 
 def filter_azure_advisor_recs(cz_insights, azure_advisor_recs):
@@ -280,7 +282,9 @@ def filter_azure_advisor_recs(cz_insights, azure_advisor_recs):
     - list of dict: Filtered Azure Advisor recommendations.
     """
     try:
-        logging.info(f"Starting to filter {len(azure_advisor_recs)} Azure Advisor recommendations based on existing Azure Advisor CloudZero insights to prevent duplicates.")
+        logging.info(
+            f"Starting to filter {len(azure_advisor_recs)} Azure Advisor recommendations based on existing Azure Advisor CloudZero insights to prevent duplicates."
+        )
 
         if not cz_insights:
             logging.info("No existing Azure Advisor CloudZero insights.")
@@ -307,7 +311,9 @@ def filter_azure_advisor_recs(cz_insights, azure_advisor_recs):
         return filtered_recs
 
     except Exception as e:
-        logging.error(f"An error occurred while filtering Azure Advisor recommendations: {e}")
+        logging.error(
+            f"An error occurred while filtering Azure Advisor recommendations: {e}"
+        )
         return []
 
 
@@ -320,16 +326,20 @@ if __name__ == "__main__":
     cz_api_key = os.environ.get("CLOUDZERO_API_KEY")
 
     if not all([client_id, client_secret, tenant_id, cz_api_key]):
-        raise ValueError("Environment variables for Azure and CloudZero are not set correctly.")
+        raise ValueError(
+            "Environment variables for Azure and CloudZero are not set correctly."
+        )
 
     logging.info("Fetching Azure subscription IDs...")
     subscriptions = list_azure_subscription_ids(client_id, client_secret, tenant_id)
 
     logging.info("Fetching Azure Advisor cost recommendations...")
-    recommendations = get_advisor_recommendations(client_id, client_secret, tenant_id, subscriptions)
+    recommendations = get_advisor_recommendations(
+        client_id, client_secret, tenant_id, subscriptions
+    )
 
     logging.info("Fetching existing Azure Advisor CloudZero insights...")
-    cz_insights = filter_azure_advisor_insights(get_cloudzero_insights_list(cz_api_key))
+    cz_insights = get_cloudzero_insights_list(cz_api_key)["insights"]
 
     logging.info("Filtering Azure Advisor recommendations...")
     filtered_recs = filter_azure_advisor_recs(cz_insights, recommendations)
@@ -347,6 +357,8 @@ if __name__ == "__main__":
             logging.info(f"Insight created: {response['insight']['title']}")
             insights_created += 1
 
-    logging.info(f"Insights created: {insights_created}/{insights_created + insights_failed}")
+    logging.info(
+        f"Insights created: {insights_created}/{insights_created + insights_failed}"
+    )
 
     logging.info("Application finished.")

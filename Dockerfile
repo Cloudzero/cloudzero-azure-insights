@@ -11,11 +11,14 @@ WORKDIR /usr/src/app
 # First, update apt-get and install gcc and Python development headers
 RUN apt-get update && apt-get install -y gcc python3-dev
 
-# Copy the current directory contents into the container at /usr/src/app
-COPY . .
+# Copy only the requirements.txt initially to leverage Docker cache
+COPY requirements.txt ./
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the rest of the current directory contents into the container at /usr/src/app
+COPY . .
 
 # Run app.py when the container launches
 CMD ["python", "./app/app.py"]
