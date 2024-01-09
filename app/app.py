@@ -61,7 +61,7 @@ def get_cloudzero_insights_list(api_key):
         logging.error(f"Unexpected error occurred: {e}")
         return {"error": str(e)}
 
-    return {"insights": insights}
+    return insights
 
 
 def list_azure_subscription_ids(client_id, client_secret, tenant_id):
@@ -339,7 +339,7 @@ if __name__ == "__main__":
     )
 
     logging.info("Fetching existing Azure Advisor CloudZero insights...")
-    cz_insights = get_cloudzero_insights_list(cz_api_key)["insights"]
+    cz_insights = get_cloudzero_insights_list(cz_api_key)
 
     logging.info("Filtering Azure Advisor recommendations...")
     filtered_recs = filter_azure_advisor_recs(cz_insights, recommendations)
