@@ -37,7 +37,7 @@ remove:
 	docker rm -f $(CONTAINER_NAME)
 
 # Clean up Docker image
-.PHONY: clean
+.PHONY: remove clean
 clean:
 	@echo "Removing Docker image..."
 	docker rmi $(IMAGE_NAME)
