@@ -52,7 +52,7 @@ CLOUDZERO_API_KEY=your_cloudzero_api_key
 To build the Docker image, run the following command in the project root directory:
 
 ```bash
-docker build -t azure-cloudzero-integration .
+make build
 ```
 
 This command builds a Docker image named azure-cloudzero-integration based on the Dockerfile in your project.
@@ -61,10 +61,22 @@ This command builds a Docker image named azure-cloudzero-integration based on th
 
 ### Running the Container
 
-To run the container, use the following command:
+To transmit Azure recommendations to CloudZero Insights, use the following command:
 
 ```bash
-docker run --env-file .env azure-cloudzero-integration
+make run-transmit
+```
+
+To export Azure recommendations to a CSV file, use the following command:
+
+```bash
+make run-export
+```
+
+To do both, use the following command:
+
+```bash
+make run-both
 ```
 
 This command starts a container instance of azure-cloudzero-integration, using the environment variables defined in the .env file.
@@ -74,10 +86,10 @@ This command starts a container instance of azure-cloudzero-integration, using t
 The application logs are configured to provide detailed information about the process and any errors that occur. Check the container logs for debugging and monitoring the application:
 
 ```bash
-docker logs [container_id]
+make logs CONTAINER_ID=<container_id>
 ```
 
-Replace [container_id] with the actual ID of your running container.
+Replace <container_id> with the actual ID of your running container.
 
 ## Support + Feedback
 

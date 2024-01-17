@@ -1,7 +1,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2016-2023, CloudZero, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-import json
+import argparse
+import csv
 import logging
 import os
 import requests
@@ -15,6 +16,25 @@ from azure.mgmt.advisor import AdvisorManagementClient
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
+
+
+def create_directory_if_not_exists(directory_name):
+    """
+    Creates a directory if it does not exist.
+
+    Args:
+    - directory_name (str): Name of the directory to be created.
+
+    Returns:
+    - None
+    """
+    # Check if directory exists
+    if not os.path.exists(directory_name):
+        # Create directory
+        os.makedirs(directory_name)
+        print(f"Directory '{directory_name}' created.")
+    else:
+        print(f"Directory '{directory_name}' already exists.")
 
 
 def get_cloudzero_insights_list(api_key):
@@ -317,7 +337,95 @@ def filter_azure_advisor_recs(cz_insights, azure_advisor_recs):
         return []
 
 
-if __name__ == "__main__":
+def transmit_azure_insights(cz_api_key, recommendations):
+    logging.info("Trasmitting Azure Advisor insights to CloudZero...")
+
+    logging.info("Fetching existing CloudZero Azure insights...")
+    cz_insights = get_cloudzero_insights_list(cz_api_key)
+
+    logging.info("Filtering Azure Advisor recommendations...")
+    filtered_recs = filter_azure_advisor_recs(cz_insights, recommendations)
+
+    insights_created = 0
+    insights_failed = 0
+    for rec in collapse_recommendations(filtered_recs).values():
+        response = create_cloudzero_insight(cz_api_key, rec)
+
+        if "error" in response:
+            logging.info(f"Insight NOT transmitted: {rec['title']}")
+            insights_failed += 1
+
+        else:
+            logging.info(
+                f"Insight trasmitted to CloudZero: {response['insight']['title']}"
+            )
+            insights_created += 1
+
+    logging.info(
+        f"Insights transmitted to CloudZero: {insights_created}/{insights_created + insights_failed}"
+    )
+
+
+def convert_to_csv(data):
+    logging.info("Converting data to CSV format")
+    extended_properties_keys = set()
+    for record in data:
+        if "extended_properties" in record and isinstance(
+            record["extended_properties"], dict
+        ):
+            extended_properties_keys.update(record["extended_properties"].keys())
+
+    csv_columns = [
+        "id",
+        "subscription_id",
+        "recommendation_id",
+        "short_description",
+    ] + list(extended_properties_keys)
+    csv_data = []
+
+    for record in data:
+        try:
+            id = record.get("id", "")
+            sub_id = id.split("/")[2] if "/" in id else "unknown"
+            row = {
+                "id": id,
+                "subscription_id": sub_id,
+                "recommendation_id": record.get("name", ""),
+                "short_description": record.get("short_description", {}).get(
+                    "solution", ""
+                ),
+            }
+
+            for key in extended_properties_keys:
+                row[key] = record.get("extended_properties", {}).get(key, "")
+
+            csv_data.append(row)
+        except Exception as e:
+            logging.error(f"Error processing record: {e}")
+
+    return csv_columns, csv_data
+
+
+def export_to_csv(recommendations):
+    logging.info("Exporting recommendations to CSV")
+    csv_columns, csv_data = convert_to_csv(recommendations)
+
+    target_directory = "output"
+    create_directory_if_not_exists(target_directory)
+
+    csv_file = f"./{target_directory}/azure_advisor_recommendations.csv"
+    try:
+        with open(csv_file, "w", newline="", encoding="utf-8") as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=csv_columns)
+            writer.writeheader()
+            for data in csv_data:
+                writer.writerow(data)
+        logging.info(f"Data successfully exported to {csv_file}")
+    except IOError as e:
+        logging.error(f"IOError while writing to CSV: {e}")
+
+
+def main(args):
     logging.info("Starting application...")
 
     client_id = os.environ.get("AZURE_CLIENT_ID")
@@ -338,27 +446,30 @@ if __name__ == "__main__":
         client_id, client_secret, tenant_id, subscriptions
     )
 
-    logging.info("Fetching existing Azure Advisor CloudZero insights...")
-    cz_insights = get_cloudzero_insights_list(cz_api_key)
+    if args.transmit and args.export_csv:
+        # Code to transmit to CloudZero and export to CSV
+        transmit_azure_insights(cz_api_key, recommendations)
+        export_to_csv(recommendations)
 
-    logging.info("Filtering Azure Advisor recommendations...")
-    filtered_recs = filter_azure_advisor_recs(cz_insights, recommendations)
+    elif args.transmit:
+        # Code to only transmit to CloudZero
+        transmit_azure_insights(cz_api_key, recommendations)
 
-    insights_created = 0
-    insights_failed = 0
-    for rec in collapse_recommendations(filtered_recs).values():
-        response = create_cloudzero_insight(cz_api_key, rec)
-
-        if "error" in response:
-            logging.info(f"Insight NOT created: {rec['title']}")
-            insights_failed += 1
-
-        else:
-            logging.info(f"Insight created: {response['insight']['title']}")
-            insights_created += 1
-
-    logging.info(
-        f"Insights created: {insights_created}/{insights_created + insights_failed}"
-    )
+    elif args.export_csv:
+        # Code to only export to CSV
+        export_to_csv(recommendations)
 
     logging.info("Application finished.")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="CloudZero Azure Insights")
+    parser.add_argument(
+        "--transmit", action="store_true", help="Transmit Azure Insights to CloudZero"
+    )
+    parser.add_argument(
+        "--export-csv", action="store_true", help="Export Azure Insights to a CSV file"
+    )
+
+    args = parser.parse_args()
+    main(args)
