@@ -36,6 +36,14 @@ Make sure this is updated based on the sections included:
 - Azure account with appropriate permissions
 - CloudZero account
 
+### Azure Permissions Required
+
+Create an Azure AD application with:
+- **Reader** role on target subscriptions
+- Required API permissions:
+  - `Microsoft.Subscription/subscriptions/read`
+  - `Microsoft.Advisor/recommendations/read`
+
 ### Setting up Environment Variables
 
 Create a `.env` file in the project root directory and populate it with the following environment variables:
