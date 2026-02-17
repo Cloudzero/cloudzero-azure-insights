@@ -6,6 +6,9 @@ import requests
 import urllib.parse
 from typing import List, Dict, Any
 
+# Source filter constant - ensures tool ONLY touches Azure Advisor insights
+AZURE_ADVISOR_SOURCE = "azure advisor"
+
 
 class CloudZeroClient:
     """Client for interacting with CloudZero API."""
@@ -26,20 +29,33 @@ class CloudZeroClient:
 
     def get_insights(
         self,
-        source: str = "azure advisor",
+        source: str = AZURE_ADVISOR_SOURCE,
         page_size: int = 100,
         max_total: int = 0
     ) -> List[Dict[str, Any]]:
         """Retrieve insights from CloudZero filtered by source.
 
+        **SAFETY**: This tool should ONLY access Azure Advisor insights.
+        The source parameter is locked to "azure advisor" by default.
+
         Args:
-            source: Source filter for insights (default: "azure advisor")
+            source: Source filter for insights (default: "azure advisor", DO NOT CHANGE)
             page_size: Items per API page (default: 100)
             max_total: Maximum total insights to fetch, 0=all (default: 0)
 
         Returns:
             List of insight dictionaries or dict with error key
+
+        Raises:
+            ValueError: If source is not "azure advisor"
         """
+        # Safety check: Only allow Azure Advisor insights
+        if source.lower() != AZURE_ADVISOR_SOURCE.lower():
+            raise ValueError(
+                f"This tool only operates on Azure Advisor insights. "
+                f"Attempted to access source='{source}' which is not allowed."
+            )
+
         logging.info(f"Fetching CloudZero insights (source={source}, max={max_total or 'all'})...")
 
         insights = []
@@ -161,19 +177,24 @@ class CloudZeroClient:
 
 
 def get_cloudzero_insights_list(cz_client: CloudZeroClient) -> List[Dict[str, Any]]:
-    """Retrieve insights from CloudZero API.
+    """Retrieve Azure Advisor insights from CloudZero API.
+
+    **SAFETY**: This function ONLY retrieves Azure Advisor insights.
+    It explicitly filters by source="azure advisor" to prevent
+    accidental modification of other CloudZero insights.
 
     Args:
         cz_client: Authenticated CloudZero API client
 
     Returns:
-        List of insight dictionaries from CloudZero
+        List of Azure Advisor insight dictionaries from CloudZero
 
     Raises:
         requests.HTTPError: If API returns error status code
         requests.RequestException: If network error occurs
     """
-    return cz_client.get_insights()
+    # Explicitly pass source to ensure safety
+    return cz_client.get_insights(source=AZURE_ADVISOR_SOURCE)
 
 
 def create_cloudzero_insight(
@@ -194,7 +215,9 @@ def create_cloudzero_insight(
 
 
 def display_insights(cz_client: CloudZeroClient, limit: int = 10) -> None:
-    """Display existing CloudZero insights in a formatted list.
+    """Display existing Azure Advisor insights in a formatted list.
+
+    **SAFETY**: Only displays Azure Advisor insights, not other CloudZero insights.
 
     Args:
         cz_client: Authenticated CloudZero API client
@@ -204,16 +227,16 @@ def display_insights(cz_client: CloudZeroClient, limit: int = 10) -> None:
         requests.HTTPError: If API returns error status
     """
     if limit == 0:
-        logging.warning("Fetching ALL insights - this may take ~70 minutes for 13K+ insights!")
+        logging.warning("Fetching ALL Azure Advisor insights - this may take ~70 minutes for 13K+ insights!")
         confirm = input("Continue? (yes/no): ")
         if confirm.lower() != "yes":
             print("Cancelled")
             return
 
-    logging.info(f"Fetching up to {limit if limit > 0 else 'ALL'} insights from CloudZero...")
+    logging.info(f"Fetching up to {limit if limit > 0 else 'ALL'} Azure Advisor insights from CloudZero...")
 
-    # Fetch insights with max_total limit
-    insights = cz_client.get_insights(page_size=100, max_total=limit)
+    # Fetch Azure Advisor insights only (source filter enforced in get_insights)
+    insights = cz_client.get_insights(source=AZURE_ADVISOR_SOURCE, page_size=100, max_total=limit)
 
     if isinstance(insights, dict) and "error" in insights:
         logging.error(f"Failed to fetch insights: {insights['error']}")
@@ -249,55 +272,69 @@ def display_insights(cz_client: CloudZeroClient, limit: int = 10) -> None:
         print(f"\nTotal: {display_count} insights displayed")
 
 
-def delete_insights(cz_client: CloudZeroClient, source_filter: str = "azure advisor", force: bool = False) -> None:
-    """Delete insights from CloudZero with confirmation.
+def delete_insights(cz_client: CloudZeroClient, force: bool = False) -> None:
+    """Delete Azure Advisor insights from CloudZero with confirmation.
+
+    **SAFETY**: This function ONLY deletes Azure Advisor insights.
+    It cannot access or delete other CloudZero insights.
 
     Args:
         cz_client: Authenticated CloudZero API client
-        source_filter: Filter insights by source (default: "azure advisor")
-        force: Skip confirmation prompt if True
+        force: Skip confirmation prompt if True (USE WITH CAUTION)
 
     Raises:
         requests.HTTPError: If API returns error status
     """
-    logging.info(f"Fetching insights to delete (source={source_filter})...")
+    logging.info(f"Fetching Azure Advisor insights to delete...")
     insights = get_cloudzero_insights_list(cz_client)
 
-    if "error" in insights:
+    if isinstance(insights, dict) and "error" in insights:
         logging.error(f"Failed to fetch insights: {insights['error']}")
         return
 
     if not insights:
-        print("\n✓ No insights found to delete")
+        print("\n✓ No Azure Advisor insights found to delete")
         return
 
-    # Filter by source
-    filtered = [i for i in insights if i.get("source", "").lower() == source_filter.lower()]
-
-    if not filtered:
-        print(f"\n✓ No insights found with source='{source_filter}'")
+    # Verify all insights are Azure Advisor (safety check)
+    non_azure = [i for i in insights if i.get("source", "").lower() != AZURE_ADVISOR_SOURCE.lower()]
+    if non_azure:
+        logging.error(
+            f"SAFETY ERROR: Found {len(non_azure)} non-Azure Advisor insights! "
+            "This should never happen. Aborting deletion."
+        )
+        print(f"\n❌ ERROR: Found non-Azure Advisor insights. Aborting for safety.")
         return
 
-    print(f"\n⚠️  Found {len(filtered)} insights to delete:")
-    for idx, insight in enumerate(filtered[:5], 1):
+    print(f"\n⚠️  Found {len(insights)} Azure Advisor insights to delete:")
+    for idx, insight in enumerate(insights[:5], 1):
         print(f"  {idx}. {insight.get('title', 'No title')} (${insight.get('cost_impact', 'N/A')})")
-    if len(filtered) > 5:
-        print(f"  ... and {len(filtered) - 5} more")
+    if len(insights) > 5:
+        print(f"  ... and {len(insights) - 5} more")
 
     # Confirmation prompt (unless forced)
     if not force:
-        print(f"\n⚠️  WARNING: This will delete {len(filtered)} insights from CloudZero!")
+        print(f"\n⚠️  WARNING: This will delete {len(insights)} Azure Advisor insights from CloudZero!")
+        print("⚠️  Other CloudZero insights will NOT be affected.")
         confirm = input("Type 'DELETE' to confirm: ")
         if confirm != "DELETE":
             print("❌ Deletion cancelled")
             return
 
-    print(f"\n🗑️  Deleting {len(filtered)} insights...")
+    print(f"\n🗑️  Deleting {len(insights)} Azure Advisor insights...")
     deleted = 0
     failed = 0
 
-    for insight in filtered:
+    for insight in insights:
         insight_id = insight.get("id")
+        insight_source = insight.get("source", "")
+
+        # Double-check source before deletion (paranoid safety check)
+        if insight_source.lower() != AZURE_ADVISOR_SOURCE.lower():
+            logging.error(f"SAFETY: Skipping {insight_id} - source is '{insight_source}', not Azure Advisor")
+            failed += 1
+            continue
+
         if not insight_id:
             logging.warning("Insight missing ID, skipping")
             failed += 1
@@ -311,6 +348,6 @@ def delete_insights(cz_client: CloudZeroClient, source_filter: str = "azure advi
         else:
             deleted += 1
 
-    print(f"\n✓ Deleted {deleted}/{deleted + failed} insights")
+    print(f"\n✓ Deleted {deleted}/{deleted + failed} Azure Advisor insights")
     if failed > 0:
         print(f"⚠️  Failed to delete {failed} insights (check logs)")

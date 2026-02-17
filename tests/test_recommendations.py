@@ -13,7 +13,8 @@ from app.transformers.recommendations import (
     extract_category,
     map_effort_level,
     build_insight_title,
-    format_single_recommendation
+    format_single_recommendation,
+    AZURE_ADVISOR_SOURCE
 )
 
 
@@ -55,7 +56,7 @@ class TestCollapseRecommendations:
         assert result["Test Problem"]["cost_impact"] == "150.0"
         assert result["Test Problem"]["title"] == "Test Problem"
         assert result["Test Problem"]["status"] == "new"
-        assert result["Test Problem"]["source"] == "Azure Advisor"
+        assert result["Test Problem"]["source"] == AZURE_ADVISOR_SOURCE
 
     def test_keeps_separate_recommendations_with_different_titles(self):
         """Should keep recommendations with different titles separate."""
@@ -448,7 +449,7 @@ class TestCreateIndividualInsight:
         assert insight["effort"] == "high"
         assert insight["cost_impact"] == "100"
         assert insight["status"] == "new"
-        assert insight["source"] == "Azure Advisor"
+        assert insight["source"] == AZURE_ADVISOR_SOURCE
         assert "sub-123" in insight["description"]
 
     def test_handles_missing_optional_fields(self):

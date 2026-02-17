@@ -4,6 +4,9 @@
 import logging
 from typing import List, Dict, Any
 
+# Import source constant for consistency and safety
+from app.clients.cloudzero_client import AZURE_ADVISOR_SOURCE
+
 
 # =============================================================================
 # ONE-TO-ONE MAPPING FUNCTIONS (New Approach)
@@ -197,7 +200,7 @@ def create_individual_insight(
         "status": "new",
         "effort": map_effort_level(rec.get("impact", "Medium")),
         "cost_impact": rec.get("extended_properties", {}).get("savingsAmount", "0"),
-        "source": "Azure Advisor"
+        "source": AZURE_ADVISOR_SOURCE
     }
 
 
@@ -245,7 +248,7 @@ def _create_collapsed_entry(rec: Dict[str, Any]) -> Dict[str, Any]:
         "effort": "medium",
         "category": "optimization",
         "status": "new",
-        "source": "Azure Advisor",
+        "source": AZURE_ADVISOR_SOURCE,
     }
 
 
