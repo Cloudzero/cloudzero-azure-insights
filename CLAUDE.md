@@ -33,10 +33,23 @@ This file contains project-specific instructions for AI-assisted development. Th
 - **Single responsibility** (no "and" in method names)
 - **Inject dependencies, don't create them**
 
+### File and Class Size Limits
+
+- **Maximum ~300 lines per module** (guideline, not hard limit)
+- **Maximum ~150 lines per class** - Split into multiple classes if exceeded
+- **Split files when they serve 3+ distinct responsibilities**
+- Consider refactoring when:
+  - A single file exceeds 500 lines
+  - A class has 5+ unrelated methods
+  - Multiple independent concerns are mixed (API clients, data transformation, CLI, etc.)
+
 ### Code Quality Checklist
 
 Before committing, verify:
 - [ ] All methods under 50 lines
+- [ ] No god classes (classes under ~150 lines with focused responsibilities)
+- [ ] No god functions (functions over 50 lines decomposed into helpers)
+- [ ] Files serving 3+ responsibilities have been split
 - [ ] Nesting depth ≤ 3 levels
 - [ ] Dependencies injected, not created
 - [ ] No unused imports or dead code
