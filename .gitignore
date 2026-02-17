@@ -152,6 +152,7 @@ cython_debug/
 *.dockerignore
 .docker/
 docker-compose*.yml
+.docker-image-built
 
 # Log files
 *.log

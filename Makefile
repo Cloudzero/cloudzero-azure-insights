@@ -6,6 +6,10 @@ IMAGE_NAME := cloudzero-azure-insights
 CONTAINER_NAME := cz-azure-insights-run
 PYTHON := python
 
+# Smart rebuild tracking
+BUILD_MARKER := .docker-image-built
+DOCKER_DEPS := Dockerfile requirements.txt $(shell find app -type f -name '*.py' 2>/dev/null)
+
 # Default target
 .PHONY: all
 all: help
@@ -54,14 +58,36 @@ dev-validate:
 # ============================================================================
 
 .PHONY: build
-build:
+build: $(BUILD_MARKER)
+
+$(BUILD_MARKER): $(DOCKER_DEPS)
 	@echo "Building Docker image..."
 	docker build -t $(IMAGE_NAME) .
+	@echo "Cleaning up dangling images..."
+	@docker image prune -f
+	@touch $(BUILD_MARKER)
+
+.PHONY: force-build
+force-build:
+	@echo "Forcing rebuild..."
+	@rm -f $(BUILD_MARKER)
+	@$(MAKE) build
 
 .PHONY: clean
 clean:
-	@echo "Removing Docker image..."
+	@echo "Removing Docker image and marker..."
 	docker rmi $(IMAGE_NAME) || true
+	@rm -f $(BUILD_MARKER)
+
+.PHONY: prune
+prune:
+	@echo "Cleaning up dangling images..."
+	docker image prune -f
+
+.PHONY: prune-all
+prune-all:
+	@echo "Deep cleaning Docker resources..."
+	docker system prune -af
 
 # ============================================================================
 # Docker Run Targets (Container Execution)
@@ -158,8 +184,11 @@ help:
 	@echo "  make dev-validate      - Validate credentials locally (requires .env)"
 	@echo ""
 	@echo "DOCKER BUILD:"
-	@echo "  make build             - Build Docker image"
-	@echo "  make clean             - Remove Docker image"
+	@echo "  make build             - Build Docker image (smart rebuild with marker)"
+	@echo "  make force-build       - Force rebuild (ignore marker)"
+	@echo "  make clean             - Remove Docker image and marker"
+	@echo "  make prune             - Clean up dangling images"
+	@echo "  make prune-all         - Deep clean all Docker resources"
 	@echo ""
 	@echo "DOCKER RUN (Container Execution):"
 	@echo "  make run-sync          - Sync recommendations to CloudZero"
