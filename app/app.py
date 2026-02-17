@@ -250,6 +250,61 @@ def create_cloudzero_insight(
     return cz_client.create_insight(data)
 
 
+def _get_savings_amount(rec: Dict[str, Any]) -> str:
+    """Extract savings amount from recommendation safely."""
+    if "extended_properties" in rec and "savingsAmount" in rec["extended_properties"]:
+        return rec["extended_properties"]["savingsAmount"]
+    return "0"
+
+
+def _format_recommendation_details(rec: Dict[str, Any]) -> str:
+    """Format extended properties or short description for display."""
+    details = rec.get("extended_properties", rec.get("short_description", {}))
+    if isinstance(details, dict):
+        details = details.copy()
+
+    return (
+        str(details)
+        .replace("'", "")
+        .replace("{", "")
+        .replace("}", "")
+        .replace(",", "\n\n")
+    )
+
+
+def _build_description_header(rec: Dict[str, Any]) -> str:
+    """Build description header with subscription ID and recommendation ID."""
+    subscription_id = rec["id"].split("/")[2] if "/" in rec.get("id", "") else "unknown"
+    rec_id = rec.get("name", "unknown")
+    return f"Azure Subscription ID: {subscription_id}\n\nAzure Advisor Recommendation ID: {rec_id}\n\n"
+
+
+def _create_collapsed_entry(rec: Dict[str, Any]) -> Dict[str, Any]:
+    """Create a new collapsed recommendation entry."""
+    title = rec["short_description"]["problem"]
+    return {
+        "title": title,
+        "cost_impact": _get_savings_amount(rec),
+        "description": _build_description_header(rec) + _format_recommendation_details(rec),
+        "effort": "medium",
+        "category": "optimization",
+        "status": "new",
+        "source": "Azure Advisor",
+    }
+
+
+def _merge_into_collapsed(collapsed: Dict[str, Dict[str, Any]], title: str, rec: Dict[str, Any]) -> None:
+    """Merge recommendation into existing collapsed entry."""
+    # Add to cost impact
+    current_cost = float(collapsed[title]["cost_impact"])
+    additional_cost = float(_get_savings_amount(rec))
+    collapsed[title]["cost_impact"] = str(current_cost + additional_cost)
+
+    # Append to description
+    separator = "\n\n---\n\n"
+    collapsed[title]["description"] += separator + _build_description_header(rec) + _format_recommendation_details(rec)
+
+
 def collapse_recommendations(recs: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
     """
     Collapses recommendations with the same title into a single record.
@@ -267,76 +322,27 @@ def collapse_recommendations(recs: List[Dict[str, Any]]) -> Dict[str, Dict[str, 
         logging.info("No Azure Advisor recommendations available to collapse.")
         return collapsed
 
-    try:
-        logging.info(f"Starting to collapse {len(recs)} Azure Advisor recommendations.")
+    logging.info(f"Starting to collapse {len(recs)} Azure Advisor recommendations.")
 
-        for rec in recs:
-            try:
-                title = rec["short_description"]["problem"]
-                if title not in collapsed:
-                    collapsed[title] = {
-                        "title": title,
-                        "cost_impact": f"{rec['extended_properties']['savingsAmount'] if 'extended_properties' in rec and 'savingsAmount' in rec['extended_properties'] else '0'}",
-                        "description": f"Azure Subscription ID: {rec['id'].split('/')[2]}\n\nAzure Advisor Recommendation ID: {rec['name']}\n\n"
-                        + str(
-                            rec["extended_properties"].copy()
-                            if "extended_properties" in rec
-                            else rec["short_description"]
-                        )
-                        .replace("'", "")
-                        .replace("{", "")
-                        .replace("}", "")
-                        .replace(",", "\n\n"),
-                        "effort": "medium",
-                        "category": "optimization",
-                        "status": "new",
-                        "source": "Azure Advisor",
-                    }
-                else:
-                    collapsed[title]["cost_impact"] = str(
-                        float(collapsed[title]["cost_impact"])
-                        + float(
-                            rec["extended_properties"]["savingsAmount"]
-                            if "extended_properties" in rec
-                            and "savingsAmount" in rec["extended_properties"]
-                            else "0"
-                        )
-                    )
-                    collapsed[title]["description"] += (
-                        f"\n\n---\n\nAzure Subscription ID: {rec['id'].split('/')[2]}\n\nAzure Advisor Recommendation ID: {rec['name']}\n\n"
-                        + str(
-                            rec["extended_properties"]
-                            if "extended_properties" in rec
-                            else rec["short_description"]
-                        )
-                        .replace("'", "")
-                        .replace("{", "")
-                        .replace("}", "")
-                        .replace(",", "\n\n")
-                    )
-            except KeyError as ke:
-                logging.warning(f"Key error encountered in recommendation: {ke}")
-                logging.info(title)
-                logging.info(
-                    rec["extended_properties"].keys()
-                    if "extended_properties" in rec
-                    else rec.keys()
-                )
-            except Exception as e:
-                logging.error(
-                    f"Unexpected error during processing a recommendation: {e}"
-                )
+    for rec in recs:
+        try:
+            title = rec["short_description"]["problem"]
 
-        logging.info(
-            f"Successfully collapsed {len(recs)} Azure Advisor recommendations to {len(collapsed)}."
-        )
-        return collapsed
+            if title not in collapsed:
+                collapsed[title] = _create_collapsed_entry(rec)
+            else:
+                _merge_into_collapsed(collapsed, title, rec)
 
-    except Exception as e:
-        logging.error(
-            f"An error occurred while collapsing Azure Advisor recommendations: {e}"
-        )
-        return {}
+        except KeyError as ke:
+            logging.warning(f"Key error encountered in recommendation: {ke}")
+            logging.info(f"Available keys: {rec.keys()}")
+        except (ValueError, TypeError) as e:
+            logging.error(f"Error processing recommendation: {e}")
+
+    logging.info(
+        f"Successfully collapsed {len(recs)} Azure Advisor recommendations to {len(collapsed)}."
+    )
+    return collapsed
 
 
 def filter_azure_advisor_recs(
