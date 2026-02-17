@@ -18,6 +18,120 @@ logging.basicConfig(
 )
 
 
+class AzureClientFactory:
+    """Factory for creating Azure clients with shared credentials."""
+
+    def __init__(self, client_id, client_secret, tenant_id):
+        """Initialize factory with Azure credentials.
+
+        Args:
+            client_id: Azure application client ID
+            client_secret: Azure application client secret
+            tenant_id: Azure tenant ID
+        """
+        self.credentials = ClientSecretCredential(
+            client_id=client_id,
+            client_secret=client_secret,
+            tenant_id=tenant_id
+        )
+
+    def create_subscription_client(self):
+        """Create an Azure SubscriptionClient."""
+        return SubscriptionClient(self.credentials)
+
+    def create_advisor_client(self, subscription_id):
+        """Create an Azure AdvisorManagementClient for a subscription."""
+        return AdvisorManagementClient(self.credentials, subscription_id)
+
+
+class CloudZeroClient:
+    """Client for interacting with CloudZero API."""
+
+    BASE_URL = "https://api.cloudzero.com/v2/insights"
+
+    def __init__(self, api_key):
+        """Initialize client with API key.
+
+        Args:
+            api_key: CloudZero API key for authentication
+        """
+        self.api_key = api_key
+        self.headers = {
+            "Authorization": api_key,
+            "Content-Type": "application/json"
+        }
+
+    def get_insights(self, source="azure advisor"):
+        """Retrieve insights from CloudZero filtered by source.
+
+        Args:
+            source: Source filter for insights (default: "azure advisor")
+
+        Returns:
+            List of insight dictionaries or dict with error key
+        """
+        logging.info(f"Fetching CloudZero insights with source={source}...")
+
+        insights = []
+        next_cursor = None
+        base_url = f"{self.BASE_URL}?source={source}"
+
+        try:
+            while True:
+                url = base_url + (f"&cursor={next_cursor}" if next_cursor else "")
+                response = requests.get(url, headers=self.headers)
+
+                if response.status_code == 200:
+                    data = response.json()
+                    insights.extend(data.get("insights", []))
+                    logging.info(f"Retrieved {len(data.get('insights', []))} insights.")
+
+                    pagination_info = data.get("pagination", {})
+                    if pagination_info.get("has_next"):
+                        next_cursor = pagination_info["cursor"]["next_cursor"]
+                    else:
+                        break
+                else:
+                    logging.error(f"Error fetching CloudZero insights: {response.text}")
+                    return {"error": response.text}
+
+        except requests.RequestException as e:
+            logging.error(f"Request error occurred: {e}")
+            return {"error": str(e)}
+        except Exception as e:
+            logging.error(f"Unexpected error occurred: {e}")
+            return {"error": str(e)}
+
+        return insights
+
+    def create_insight(self, data):
+        """Create a new insight in CloudZero.
+
+        Args:
+            data: Dictionary containing insight data
+
+        Returns:
+            Response dictionary from API or dict with error key
+        """
+        try:
+            logging.info("Attempting to create a new CloudZero insight.")
+            response = requests.post(self.BASE_URL, json=data, headers=self.headers)
+
+            if response.status_code == 200:
+                logging.info("CloudZero insight created successfully.")
+                return response.json()
+            else:
+                logging.error(
+                    f"Failed to create CloudZero insight. "
+                    f"Status code: {response.status_code}, Response: {response.text}"
+                )
+                return {"error": response.text}
+
+        except Exception as e:
+            logging.error(f"An error occurred while creating CloudZero insight: {e}")
+            return {"error": str(e)}
+
+
 def create_directory_if_not_exists(directory_name):
     """
     Creates a directory if it does not exist.
@@ -37,61 +151,25 @@ def create_directory_if_not_exists(directory_name):
         print(f"Directory '{directory_name}' already exists.")
 
 
-def get_cloudzero_insights_list(api_key):
+def get_cloudzero_insights_list(cz_client):
     """
     Retrieve a list of insights from CloudZero.
 
     Args:
-    - api_key (str): The API key for authenticating with CloudZero.
+    - cz_client (CloudZeroClient): CloudZero API client
 
     Returns:
-    - dict: The list of insights or error message.
+    - list: List of insights or dict with error key
     """
-
-    logging.info("Fetching CloudZero insights list...")
-
-    base_url = "https://api.cloudzero.com/v2/insights?source=azure%20advisor"
-    headers = {"Authorization": api_key, "Content-Type": "application/json"}
-
-    insights = []
-    next_cursor = None
-
-    try:
-        while True:
-            url = base_url + (f"?cursor={next_cursor}" if next_cursor else "")
-            response = requests.get(url, headers=headers)
-
-            if response.status_code == 200:
-                data = response.json()
-                insights.extend(data.get("insights", []))
-                logging.info(f"Retrieved {len(data.get('insights', []))} insights.")
-
-                pagination_info = data.get("pagination", {})
-                if pagination_info.get("has_next"):
-                    next_cursor = pagination_info["cursor"]["next_cursor"]
-                else:
-                    break
-            else:
-                logging.error(f"Error fetching CloudZero insights: {response.text}")
-                return {"error": response.text}
-    except requests.RequestException as e:
-        logging.error(f"Request error occurred: {e}")
-        return {"error": str(e)}
-    except Exception as e:
-        logging.error(f"Unexpected error occurred: {e}")
-        return {"error": str(e)}
-
-    return insights
+    return cz_client.get_insights()
 
 
-def list_azure_subscription_ids(client_id, client_secret, tenant_id):
+def list_azure_subscription_ids(subscription_client):
     """
-    Lists the IDs of all Azure subscriptions associated with the given credentials.
+    Lists the IDs of all Azure subscriptions.
 
     Args:
-    - client_id (str): The Azure client ID.
-    - client_secret (str): The Azure client secret.
-    - tenant_id (str): The Azure tenant ID.
+    - subscription_client (SubscriptionClient): Azure subscription client
 
     Returns:
     - list: A list of strings, where each string is an Azure subscription ID.
@@ -100,12 +178,6 @@ def list_azure_subscription_ids(client_id, client_secret, tenant_id):
     logging.info("Listing Azure subscription IDs...")
 
     try:
-        credentials = ClientSecretCredential(
-            client_id=client_id, client_secret=client_secret, tenant_id=tenant_id
-        )
-
-        subscription_client = SubscriptionClient(credentials)
-
         subscriptions = subscription_client.subscriptions.list()
         subscription_ids = [
             subscription.subscription_id for subscription in subscriptions
@@ -119,86 +191,56 @@ def list_azure_subscription_ids(client_id, client_secret, tenant_id):
         return []
 
 
-def get_advisor_recommendations(client_id, client_secret, tenant_id, subscriptions):
+def get_advisor_recommendations(azure_factory, subscriptions):
     """
-    Fetches Azure Advisor recommendations for all subscriptions in the account.
+    Fetches Azure Advisor recommendations for all subscriptions.
 
     Args:
-    - client_id (str): Azure client ID.
-    - client_secret (str): Azure client secret.
-    - tenant_id (str): Azure tenant ID.
+    - azure_factory (AzureClientFactory): Factory for creating Azure clients
+    - subscriptions (list): List of subscription IDs
 
     Returns:
-    - list: A list Azure Advisor recommendations.
+    - list: A list of Azure Advisor recommendations.
     """
 
     logging.info(
         "Fetching Azure Advisor cost recommendations for provided subscriptions."
     )
 
-    try:
-        credentials = ClientSecretCredential(
-            client_id=client_id, client_secret=client_secret, tenant_id=tenant_id
-        )
+    all_recommendations = []
 
-        all_recommendations = []
+    for subscription_id in subscriptions:
+        try:
+            advisor_client = azure_factory.create_advisor_client(subscription_id)
+            recommendations = advisor_client.recommendations.list(
+                filter="Category eq 'Cost'"
+            )
 
-        for subscription_id in subscriptions:
-            try:
-                advisor_client = AdvisorManagementClient(credentials, subscription_id)
-                recommendations = advisor_client.recommendations.list(
-                    filter="Category eq 'Cost'"
-                )
+            all_recommendations.extend([rec.as_dict() for rec in recommendations])
+            logging.info(
+                f"Retrieved Azure Advisor cost recommendations for subscription ID: {subscription_id}"
+            )
 
-                all_recommendations.extend([rec.as_dict() for rec in recommendations])
-                logging.info(
-                    f"Retrieved Azure Advistor cost recommendations for subscription ID: {subscription_id}"
-                )
+        except Exception as e:
+            logging.error(
+                f"Failed to fetch Azure Advisor cost recommendations for subscription ID {subscription_id}: {e}"
+            )
 
-            except Exception as e:
-                logging.error(
-                    f"Failed to fetch Azure Advistor cost recommendations for subscription ID {subscription_id}: {e}"
-                )
-
-        return all_recommendations
-
-    except Exception as e:
-        logging.error(
-            f"An error occurred while fetching Azure Advisor cost recommendations: {e}"
-        )
-        return []
+    return all_recommendations
 
 
-def create_cloudzero_insight(api_key, data):
+def create_cloudzero_insight(cz_client, data):
     """
     Sends a POST request to create an insight in CloudZero.
 
     Args:
-    - api_key (str): API key for authentication with CloudZero.
+    - cz_client (CloudZeroClient): CloudZero API client
     - data (dict): The data payload for creating an insight.
 
     Returns:
     - dict: The response from the CloudZero API.
     """
-    url = "https://api.cloudzero.com/v2/insights"
-    headers = {"authorization": f"{api_key}", "accept": "application/json"}
-
-    try:
-        logging.info("Attempting to create a new CloudZero insight.")
-        response = requests.post(url, json=data, headers=headers)
-
-        if response.status_code == 200:
-            logging.info("CloudZero insight created successfully.")
-            return response.json()
-        else:
-            logging.error(
-                f"Failed to create CloudZero insight. Status code: {response.status_code}, Response: {response.text}"
-            )
-            return {"error": response.text}
-
-    except Exception as e:
-        logging.error(f"An error occurred while creating CloudZero insight: {e}")
-        return {"error": str(e)}
+    return cz_client.create_insight(data)
 
 
 def collapse_recommendations(recs):
@@ -337,11 +379,11 @@ def filter_azure_advisor_recs(cz_insights, azure_advisor_recs):
         return []
 
 
-def transmit_azure_insights(cz_api_key, recommendations):
-    logging.info("Trasmitting Azure Advisor insights to CloudZero...")
+def transmit_azure_insights(cz_client, recommendations):
+    logging.info("Transmitting Azure Advisor insights to CloudZero...")
 
     logging.info("Fetching existing CloudZero Azure insights...")
-    cz_insights = get_cloudzero_insights_list(cz_api_key)
+    cz_insights = get_cloudzero_insights_list(cz_client)
 
     logging.info("Filtering Azure Advisor recommendations...")
     filtered_recs = filter_azure_advisor_recs(cz_insights, recommendations)
@@ -349,7 +391,7 @@ def transmit_azure_insights(cz_api_key, recommendations):
     insights_created = 0
     insights_failed = 0
     for rec in collapse_recommendations(filtered_recs).values():
-        response = create_cloudzero_insight(cz_api_key, rec)
+        response = create_cloudzero_insight(cz_client, rec)
 
         if "error" in response:
             logging.info(f"Insight NOT transmitted: {rec['title']}")
@@ -357,7 +399,7 @@ def transmit_azure_insights(cz_api_key, recommendations):
 
         else:
             logging.info(
-                f"Insight trasmitted to CloudZero: {response['insight']['title']}"
+                f"Insight transmitted to CloudZero: {response['insight']['title']}"
             )
             insights_created += 1
 
@@ -438,22 +480,25 @@ def main(args):
             "Environment variables for Azure and CloudZero are not set correctly."
         )
 
+    # Create clients
+    azure_factory = AzureClientFactory(client_id, client_secret, tenant_id)
+    cz_client = CloudZeroClient(cz_api_key)
+    subscription_client = azure_factory.create_subscription_client()
+
     logging.info("Fetching Azure subscription IDs...")
-    subscriptions = list_azure_subscription_ids(client_id, client_secret, tenant_id)
+    subscriptions = list_azure_subscription_ids(subscription_client)
 
     logging.info("Fetching Azure Advisor cost recommendations...")
-    recommendations = get_advisor_recommendations(
-        client_id, client_secret, tenant_id, subscriptions
-    )
+    recommendations = get_advisor_recommendations(azure_factory, subscriptions)
 
     if args.transmit and args.export_csv:
         # Code to transmit to CloudZero and export to CSV
-        transmit_azure_insights(cz_api_key, recommendations)
+        transmit_azure_insights(cz_client, recommendations)
         export_to_csv(recommendations)
 
     elif args.transmit:
         # Code to only transmit to CloudZero
-        transmit_azure_insights(cz_api_key, recommendations)
+        transmit_azure_insights(cz_client, recommendations)
 
     elif args.export_csv:
         # Code to only export to CSV
