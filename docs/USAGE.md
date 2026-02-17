@@ -246,22 +246,9 @@ Exporting to CSV in ./output/...
 
 ### List Insights
 
-View existing CloudZero insights that were created from Azure Advisor.
+View existing CloudZero insights that were created from Azure Advisor with optional filters.
 
-#### Makefile
-
-```bash
-# List 10 insights (default)
-make run-list
-
-# List 20 insights
-make run-list LIMIT=20
-
-# List all insights (SLOW - can take hours!)
-make run-list LIMIT=0
-```
-
-#### CLI Direct
+#### Basic Usage
 
 ```bash
 # List 10 insights (default)
@@ -270,24 +257,73 @@ python -m app.cli list
 # List 20 insights
 python -m app.cli list --limit 20
 
-# List all insights
+# List all insights (SLOW - can take hours!)
 python -m app.cli list --limit 0
 ```
 
-**Output:**
+#### Filtering Options
+
+All filters can be combined to narrow results:
+
+```bash
+# Filter by status
+python -m app.cli list --status new
+python -m app.cli list --status ignored
+
+# Filter by Azure subscription
+python -m app.cli list --subscription sub-abc-123
+
+# Filter by cost impact
+python -m app.cli list --min-cost 100          # >= $100
+python -m app.cli list --max-cost 50           # <= $50
+python -m app.cli list --min-cost 50 --max-cost 500  # Between $50-$500
+
+# Filter by title
+python -m app.cli list --title "Right-size"    # Title contains "Right-size"
+python -m app.cli list --title "Shutdown"      # Title contains "Shutdown"
+
+# Filter by timestamp (Unix timestamp)
+python -m app.cli list --created-after 1705881600   # After Jan 22, 2024
+python -m app.cli list --created-before 1708473600  # Before Feb 21, 2024
+
+# Filter by Azure Advisor recommendation ID
+python -m app.cli list --rec-id abc-123-def
+
+# Combine multiple filters
+python -m app.cli list --status new --min-cost 100 --limit 50
+python -m app.cli list --subscription sub-123 --title "VM"
+```
+
+#### Available Filters
+
+| Filter | Type | Description |
+|--------|------|-------------|
+| `--limit` | int | Number of insights to display (0=all) |
+| `--subscription` | text | Azure subscription ID (substring match) |
+| `--status` | choice | new, in_progress, completed, ignored |
+| `--created-before` | int | Unix timestamp - created before this |
+| `--created-after` | int | Unix timestamp - created after this |
+| `--min-cost` | float | Minimum cost impact (inclusive) |
+| `--max-cost` | float | Maximum cost impact (inclusive) |
+| `--title` | text | Title substring (case-insensitive) |
+| `--rec-id` | text | Azure Advisor recommendation ID |
+| `--format` | choice | table (default) or json |
+
+**Output Example:**
 ```
 Fetching insights from CloudZero (limit=20)...
+Filters applied: 1000 → 15 insights
 
-✓ Displaying 20 of 50000+ insights:
+✓ Displaying 15 of 15+ insights:
 
 --------------------------------------------------------------------------------
 1. Right-size VM: vm-firewall-prod (D8ls_v5 → B8als_v2)
-   Status: new | Cost Impact: $708 | Source: Azure Advisor
-   Created: 2026-02-17 | Updated: 2026-02-17
+   Status: new | Cost Impact: $708 | Source: azure advisor
+   Created: 1771351712 | Updated: 1771351712
 --------------------------------------------------------------------------------
 2. Shutdown vm-test-dev
-   Status: new | Cost Impact: $1200 | Source: Azure Advisor
-   Created: 2026-02-17 | Updated: 2026-02-17
+   Status: new | Cost Impact: $1200 | Source: azure advisor
+   Created: 1771351713 | Updated: 1771351713
 --------------------------------------------------------------------------------
 ...
 ```
@@ -296,66 +332,138 @@ Fetching insights from CloudZero (limit=20)...
 - Default limit (10): ~2-5 seconds
 - Limit 100: ~10-30 seconds
 - Limit 0 (all): 60-120 minutes for 10K-50K insights
+- Filters are applied client-side after fetching
 
 ---
 
 ### Delete Insights
 
-Delete Azure Advisor insights from CloudZero.
+Delete Azure Advisor insights from CloudZero with optional filters.
 
 ⚠️ **DESTRUCTIVE OPERATION** - Use with caution!
+⚠️ **This command ONLY deletes Azure Advisor insights** - other insight types are never affected.
 
-#### Makefile
-
-```bash
-# Delete with confirmation prompt
-make run-delete
-
-# Force delete without confirmation (CLI direct only)
-python -m app.cli delete --force
-```
-
-#### CLI Direct
+#### Recommended Workflow: Always Use Dry-Run First
 
 ```bash
-# Delete with confirmation (default source: "azure advisor")
+# Step 1: Preview what will be deleted
+python -m app.cli delete --dry-run
+
+# Step 2: Review the output carefully
+
+# Step 3: Actually delete (with confirmation)
 python -m app.cli delete
 
-# Delete without confirmation
+# OR delete without confirmation
 python -m app.cli delete --force
-
-# Delete different source
-python -m app.cli delete --filter "custom source"
 ```
 
-**Output:**
+#### Basic Usage
+
+```bash
+# Delete ALL Azure Advisor insights (with confirmation)
+python -m app.cli delete
+
+# Preview deletion (no actual changes)
+python -m app.cli delete --dry-run
+
+# Delete without confirmation (dangerous!)
+python -m app.cli delete --force
 ```
-Deleting insights from CloudZero (source=azure advisor)...
 
-⚠️  Found 42 insights to delete:
-  1. Right-size VM: vm-prod (D8 → B8) ($708)
-  2. Shutdown vm-test-dev ($1200)
-  3. Right-size VM: vm-firewall (D8 → B4) ($354)
-  ... and 39 more
+#### Targeted Deletion with Filters
 
-⚠️  WARNING: This will delete 42 insights from CloudZero!
+Use filters to delete specific subsets of insights:
+
+```bash
+# Delete by status
+python -m app.cli delete --status ignored --dry-run
+python -m app.cli delete --status completed --force
+
+# Delete from specific Azure subscription
+python -m app.cli delete --subscription sub-abc-123 --dry-run
+
+# Delete low-value insights
+python -m app.cli delete --max-cost 50 --dry-run
+
+# Delete high-value insights (be careful!)
+python -m app.cli delete --min-cost 1000 --dry-run
+
+# Delete by title pattern
+python -m app.cli delete --title "Shutdown" --dry-run
+
+# Delete old insights (Unix timestamp)
+python -m app.cli delete --created-before 1705881600 --dry-run
+
+# Combine filters for precise targeting
+python -m app.cli delete --status ignored --max-cost 100 --dry-run
+```
+
+#### Available Filters
+
+All filters from `list` command work with `delete`:
+
+| Filter | Type | Description |
+|--------|------|-------------|
+| `--dry-run` | flag | **Preview deletions without actually deleting** |
+| `--force` | flag | Skip confirmation prompt |
+| `--subscription` | text | Azure subscription ID (substring match) |
+| `--status` | choice | new, in_progress, completed, ignored |
+| `--created-before` | int | Unix timestamp - delete insights created before this |
+| `--created-after` | int | Unix timestamp - delete insights created after this |
+| `--min-cost` | float | Minimum cost impact (inclusive) |
+| `--max-cost` | float | Maximum cost impact (inclusive) |
+| `--title` | text | Title substring (case-insensitive) |
+| `--rec-id` | text | Azure Advisor recommendation ID |
+
+**Output Example (Dry-Run):**
+```
+[DRY RUN] Previewing Azure Advisor insight deletions...
+
+[DRY RUN] Would delete 15 Azure Advisor insights:
+  1. Shutdown vm-test-dev ($50)
+  2. Right-size VM: vm-old (D4 → B2) ($25)
+  3. Shutdown vm-temp ($30)
+  ... and 12 more
+
+  Filters: status=ignored, max_cost<=50
+
+[DRY RUN] No insights were actually deleted
+```
+
+**Output Example (Actual Deletion):**
+```
+Deleting Azure Advisor insights from CloudZero...
+
+⚠️  Found 15 Azure Advisor insights to delete:
+  1. Shutdown vm-test-dev ($50)
+  2. Right-size VM: vm-old (D4 → B2) ($25)
+  ... and 13 more
+
+  Filters: status=ignored, max_cost<=50
+
+⚠️  WARNING: This will delete 15 Azure Advisor insights from CloudZero!
+⚠️  Other CloudZero insights will NOT be affected.
 Type 'DELETE' to confirm: DELETE
 
-🗑️  Deleting 42 insights...
+🗑️  Deleting 15 Azure Advisor insights...
 
-✓ Deleted 42/42 insights
+✓ Deleted 15/15 Azure Advisor insights
 ```
 
 **When to use:**
 - Cleaning up test runs
 - Removing old insights before v2.0 upgrade
 - Resetting to fresh state
-- Removing addressed insights
+- Removing addressed/ignored insights
+- Cleaning up low-value recommendations
 
 **Safety features:**
+- **Dry-run mode** - preview before deleting
 - Interactive confirmation required (unless --force)
-- Filters by source (only touches "azure advisor" insights by default)
-- Shows preview before deletion
+- **Source locked** - only touches "azure advisor" insights
+- **Filter preview** - shows which filters are applied
+- Paranoid double-checks before each deletion
 - Reports success/failure counts
 
 ---

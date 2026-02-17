@@ -170,13 +170,25 @@ make run-export            # Export to ./output/
 ```bash
 make run-list              # Show 10 (default)
 make run-list LIMIT=20     # Show 20
-make run-list LIMIT=0      # Show all (slow!)
+
+# With filters (CLI direct)
+python -m app.cli list --status new --min-cost 100
+python -m app.cli list --subscription sub-123
+python -m app.cli list --title "Right-size"
 ```
 
 **Delete insights:**
 
 ```bash
-make run-delete            # Interactive deletion with confirmation
+# ALWAYS use dry-run first!
+python -m app.cli delete --dry-run
+
+# Delete all (with confirmation)
+make run-delete
+
+# Delete with filters (CLI direct)
+python -m app.cli delete --status ignored --dry-run
+python -m app.cli delete --max-cost 50 --force
 ```
 
 **Validate credentials:**
@@ -201,8 +213,10 @@ python -m app.cli validate
 python -m app.cli sync --dry-run
 python -m app.cli sync
 python -m app.cli list --limit 20
+python -m app.cli list --status new --min-cost 100  # With filters
 python -m app.cli export csv
-python -m app.cli delete
+python -m app.cli delete --dry-run  # Always preview first!
+python -m app.cli delete --status ignored  # Delete with filters
 ```
 
 ### CLI Command Reference
