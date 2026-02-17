@@ -10,6 +10,11 @@ PYTHON := python
 BUILD_MARKER := .docker-image-built
 DOCKER_DEPS := Dockerfile requirements.txt $(shell find app -type f -name '*.py' 2>/dev/null)
 
+# Docker labels for resource identification
+DOCKER_LABELS := --label "project=cloudzero-azure-insights" \
+                 --label "managed-by=makefile" \
+                 --label "version=2.0"
+
 # Default target
 .PHONY: all
 all: help
@@ -62,9 +67,9 @@ build: $(BUILD_MARKER)
 
 $(BUILD_MARKER): $(DOCKER_DEPS)
 	@echo "Building Docker image..."
-	docker build -t $(IMAGE_NAME) .
-	@echo "Cleaning up dangling images..."
-	@docker image prune -f
+	docker build $(DOCKER_LABELS) -t $(IMAGE_NAME) .
+	@echo "Cleaning up dangling images from this project..."
+	@docker image prune -f --filter "label=project=cloudzero-azure-insights"
 	@touch $(BUILD_MARKER)
 
 .PHONY: force-build
@@ -81,13 +86,14 @@ clean:
 
 .PHONY: prune
 prune:
-	@echo "Cleaning up dangling images..."
-	docker image prune -f
+	@echo "Cleaning up dangling images from this project..."
+	docker image prune -f --filter "label=project=cloudzero-azure-insights"
 
 .PHONY: prune-all
 prune-all:
-	@echo "Deep cleaning Docker resources..."
-	docker system prune -af
+	@echo "Deep cleaning Docker resources from this project..."
+	docker image prune -af --filter "label=project=cloudzero-azure-insights"
+	docker container prune -f --filter "label=project=cloudzero-azure-insights"
 
 # ============================================================================
 # Docker Run Targets (Container Execution)
@@ -187,8 +193,8 @@ help:
 	@echo "  make build             - Build Docker image (smart rebuild with marker)"
 	@echo "  make force-build       - Force rebuild (ignore marker)"
 	@echo "  make clean             - Remove Docker image and marker"
-	@echo "  make prune             - Clean up dangling images"
-	@echo "  make prune-all         - Deep clean all Docker resources"
+	@echo "  make prune             - Clean up dangling images (this project only)"
+	@echo "  make prune-all         - Deep clean Docker resources (this project only)"
 	@echo ""
 	@echo "DOCKER RUN (Container Execution):"
 	@echo "  make run-sync          - Sync recommendations to CloudZero"
