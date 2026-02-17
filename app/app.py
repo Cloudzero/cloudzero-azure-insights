@@ -503,6 +503,44 @@ def export_to_csv(recommendations: List[Dict[str, Any]]) -> None:
         logging.error(f"IOError while writing to CSV: {e}")
 
 
+def display_insights(cz_client: CloudZeroClient) -> None:
+    """Display existing CloudZero insights in a formatted list.
+
+    Args:
+        cz_client: Authenticated CloudZero API client
+
+    Raises:
+        requests.HTTPError: If API returns error status
+    """
+    logging.info("Fetching insights from CloudZero...")
+    insights = get_cloudzero_insights_list(cz_client)
+
+    if "error" in insights:
+        logging.error(f"Failed to fetch insights: {insights['error']}")
+        return
+
+    if not insights:
+        print("\n✓ No insights found in CloudZero")
+        return
+
+    print(f"\n✓ Found {len(insights)} insights in CloudZero:\n")
+    print("-" * 80)
+
+    for idx, insight in enumerate(insights, 1):
+        title = insight.get("title", "No title")
+        status = insight.get("status", "unknown")
+        cost_impact = insight.get("cost_impact", "N/A")
+        source = insight.get("source", "unknown")
+        created = insight.get("created_at", "unknown")
+
+        print(f"{idx}. {title}")
+        print(f"   Status: {status} | Cost Impact: ${cost_impact} | Source: {source}")
+        print(f"   Created: {created}")
+        print("-" * 80)
+
+    print(f"\nTotal: {len(insights)} insights")
+
+
 def main(args: argparse.Namespace) -> None:
     logging.info("Starting application...")
 
@@ -517,8 +555,16 @@ def main(args: argparse.Namespace) -> None:
         )
 
     # Create clients
-    azure_factory = AzureClientFactory(client_id, client_secret, tenant_id)
     cz_client = CloudZeroClient(cz_api_key)
+
+    # Handle list-insights (CloudZero only, no Azure needed)
+    if args.list_insights:
+        display_insights(cz_client)
+        logging.info("Application finished.")
+        return
+
+    # For other operations, need Azure clients
+    azure_factory = AzureClientFactory(client_id, client_secret, tenant_id)
     subscription_client = azure_factory.create_subscription_client()
 
     logging.info("Fetching Azure subscription IDs...")
@@ -550,6 +596,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--export-csv", action="store_true", help="Export Azure Insights to a CSV file"
+    )
+    parser.add_argument(
+        "--list-insights", action="store_true", help="List existing insights from CloudZero"
     )
 
     args = parser.parse_args()
