@@ -18,6 +18,7 @@ This file contains project-specific instructions for AI-assisted development. Th
 
 - **KISS**: Keep it simple - solve the problem at hand, not future problems
 - **Single Responsibility**: Each component should do one thing well
+- **Avoid God Classes/Functions**: Classes with 200+ lines or 5+ methods doing unrelated things should be split. Functions over 50 lines should be decomposed into smaller, focused functions
 - **Clear Dependencies**: Inject dependencies, don't create them internally
 - **Performance First**: Optimize for time, memory, and disk usage from the start
 - **Fail Fast**: Validate early, provide clear error messages

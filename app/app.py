@@ -63,21 +63,27 @@ class CloudZeroClient:
             "Content-Type": "application/json"
         }
 
-    def get_insights(self, source: str = "azure advisor", limit: int = 100) -> List[Dict[str, Any]]:
+    def get_insights(
+        self,
+        source: str = "azure advisor",
+        page_size: int = 100,
+        max_total: int = 0
+    ) -> List[Dict[str, Any]]:
         """Retrieve insights from CloudZero filtered by source.
 
         Args:
             source: Source filter for insights (default: "azure advisor")
-            limit: Items per page (default: 100)
+            page_size: Items per API page (default: 100)
+            max_total: Maximum total insights to fetch, 0=all (default: 0)
 
         Returns:
             List of insight dictionaries or dict with error key
         """
-        logging.info(f"Fetching CloudZero insights with source={source}...")
+        logging.info(f"Fetching CloudZero insights (source={source}, max={max_total or 'all'})...")
 
         insights = []
         next_cursor = None
-        base_url = f"{self.BASE_URL}?source={urllib.parse.quote(source)}&limit={limit}"
+        base_url = f"{self.BASE_URL}?source={urllib.parse.quote(source)}&limit={page_size}"
         page_num = 0
 
         try:
@@ -104,6 +110,12 @@ class CloudZeroClient:
                         f"Page {page_num}: Retrieved {len(page_insights)} insights "
                         f"(total so far: {len(insights)}/{total_count})"
                     )
+
+                    # Stop if we've reached max_total limit
+                    if max_total > 0 and len(insights) >= max_total:
+                        logging.info(f"Reached max limit ({max_total}), stopping.")
+                        insights = insights[:max_total]  # Trim to exact limit
+                        break
 
                     # Check if there are more pages
                     cursor_info = pagination_info.get("cursor", {})
@@ -646,19 +658,29 @@ def delete_insights(cz_client: CloudZeroClient, source_filter: str = "azure advi
         print(f"⚠️  Failed to delete {failed} insights (check logs)")
 
 
-def display_insights(cz_client: CloudZeroClient) -> None:
+def display_insights(cz_client: CloudZeroClient, limit: int = 10) -> None:
     """Display existing CloudZero insights in a formatted list.
 
     Args:
         cz_client: Authenticated CloudZero API client
+        limit: Maximum number of insights to fetch and display (0 = all)
 
     Raises:
         requests.HTTPError: If API returns error status
     """
-    logging.info("Fetching insights from CloudZero...")
-    insights = get_cloudzero_insights_list(cz_client)
+    if limit == 0:
+        logging.warning("Fetching ALL insights - this may take ~70 minutes for 13K+ insights!")
+        confirm = input("Continue? (yes/no): ")
+        if confirm.lower() != "yes":
+            print("Cancelled")
+            return
 
-    if "error" in insights:
+    logging.info(f"Fetching up to {limit if limit > 0 else 'ALL'} insights from CloudZero...")
+
+    # Fetch insights with max_total limit
+    insights = cz_client.get_insights(page_size=100, max_total=limit)
+
+    if isinstance(insights, dict) and "error" in insights:
         logging.error(f"Failed to fetch insights: {insights['error']}")
         return
 
@@ -666,31 +688,50 @@ def display_insights(cz_client: CloudZeroClient) -> None:
         print("\n✓ No insights found in CloudZero")
         return
 
-    print(f"\n✓ Found {len(insights)} insights in CloudZero:\n")
+    # Display insights
+    display_count = len(insights) if limit == 0 else min(len(insights), limit)
+    total_available = len(insights)
+
+    print(f"\n✓ Displaying {display_count} of {total_available}+ insights:\n")
     print("-" * 80)
 
-    for idx, insight in enumerate(insights, 1):
+    for idx, insight in enumerate(insights[:display_count], 1):
         title = insight.get("title", "No title")
         status = insight.get("status", "unknown")
         cost_impact = insight.get("cost_impact", "N/A")
         source = insight.get("source", "unknown")
-        created = insight.get("created_at", "unknown")
+        created = insight.get("created", "unknown")
+        last_updated = insight.get("last_updated", "unknown")
 
         print(f"{idx}. {title}")
         print(f"   Status: {status} | Cost Impact: ${cost_impact} | Source: {source}")
-        print(f"   Created: {created}")
+        print(f"   Created: {created} | Updated: {last_updated}")
         print("-" * 80)
 
-    print(f"\nTotal: {len(insights)} insights")
+    if limit > 0 and total_available > display_count:
+        print(f"\n... and {total_available - display_count} more (use --limit=0 to see all)")
+    else:
+        print(f"\nTotal: {display_count} insights displayed")
 
 
 def main(args: argparse.Namespace) -> None:
     logging.info("Starting application...")
 
+    cz_api_key = os.environ.get("CLOUDZERO_API_KEY")
+
+    # Handle list-insights (CloudZero only, no Azure needed)
+    if args.list_insights:
+        if not cz_api_key:
+            raise ValueError("CLOUDZERO_API_KEY environment variable is required.")
+        cz_client = CloudZeroClient(cz_api_key)
+        display_insights(cz_client, limit=args.limit)
+        logging.info("Application finished.")
+        return
+
+    # For other operations, need all credentials
     client_id = os.environ.get("AZURE_CLIENT_ID")
     client_secret = os.environ.get("AZURE_CLIENT_SECRET")
     tenant_id = os.environ.get("AZURE_TENANT_ID")
-    cz_api_key = os.environ.get("CLOUDZERO_API_KEY")
 
     if not all([client_id, client_secret, tenant_id, cz_api_key]):
         raise ValueError(
@@ -699,12 +740,6 @@ def main(args: argparse.Namespace) -> None:
 
     # Create clients
     cz_client = CloudZeroClient(cz_api_key)
-
-    # Handle list-insights (CloudZero only, no Azure needed)
-    if args.list_insights:
-        display_insights(cz_client)
-        logging.info("Application finished.")
-        return
 
     # For other operations, need Azure clients
     azure_factory = AzureClientFactory(client_id, client_secret, tenant_id)
@@ -742,6 +777,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--list-insights", action="store_true", help="List existing insights from CloudZero"
+    )
+    parser.add_argument(
+        "--limit", type=int, default=10, help="Number of insights to display with --list-insights (0=all, default=10)"
     )
     parser.add_argument(
         "--dry-run", action="store_true", help="Preview what would be uploaded without actually uploading"
