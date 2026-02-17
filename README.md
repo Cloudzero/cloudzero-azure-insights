@@ -6,27 +6,70 @@
 
 This project integrates Azure Advisor with CloudZero, allowing Azure Advisor cost recommendations to be extracted, converted to CloudZero insights, and uploaded to CloudZero effectively.
 
-> **Note:** This application does not operate on a scheduled basis. Each time you execute the application, it retrieves cost recommendations from Azure Advisor and only uploads the ones that are currently not present in CloudZero.
+## Key Features
+
+- ✅ **1:1 Mapping**: Creates one CloudZero insight per Azure Advisor recommendation for better tracking
+- ✅ **Duplicate Prevention**: Automatically skips recommendations already in CloudZero
+- ✅ **Enhanced Metadata**: Uses Azure categories, effort levels, and detailed resource information
+- ✅ **Scheduled Execution**: Designed to run periodically (daily/weekly) via container scheduling
+- ✅ **Multiple Export Options**: Upload to CloudZero, export to CSV, or both
+
+## Why This Tool Exists
+
+CloudZero automatically imports cost recommendations from:
+- ✅ AWS Trusted Advisor
+- ✅ GCP Recommender
+- ❌ Azure Advisor (not supported)
+
+**This tool bridges that gap** by syncing Azure Advisor recommendations to CloudZero as insights.
+
+## Quick Links
+
+- **[Deployment Guide](docs/DEPLOYMENT.md)** - Scheduling examples (Azure Container Instances, K8s, cron)
+- **[Usage Guide](docs/USAGE.md)** - Commands, use cases, and best practices
+- **[Azure Permissions](docs/DEPLOYMENT.md#azure-permissions-required)** - Required Azure AD setup
+
+> **Recommended Usage:** Schedule this tool to run daily during off-hours (2-4 AM). First run may take 60-120 minutes for large deployments, but ensures your CloudZero insights stay synchronized with Azure Advisor recommendations.
+
+## What's New in v2.0
+
+**Breaking Change: 1:1 Insight Mapping**
+
+Previous versions collapsed multiple Azure recommendations into single CloudZero insights. **v2.0 creates one insight per recommendation** for better tracking and filtering.
+
+**Benefits:**
+- Track individual resources (mark specific VMs as addressed)
+- Filter by subscription, region, and resource in CloudZero
+- More accurate cost attribution per resource
+- Clearer insight titles with resource names and SKU changes
+
+**Impact:**
+- More CloudZero insights created (could be 10K-50K+ for large deployments)
+- Use CloudZero's filters and search to manage insights effectively
+- First transmission after upgrade will create individual insights for all Azure recommendations
+
+**Migration:** If you have existing collapsed insights, consider cleaning them up before running v2.0. See [Usage Guide](docs/USAGE.md) for details.
 
 ## Table of Contents
 
-Make sure this is updated based on the sections included:
-
-- [CloudZero and Azure Advisor Integration Project](#cloudzero-and-azure-advisor-integration-project)
-  - [Table of Contents](#table-of-contents)
-  - [Installation](#installation)
-    - [Prerequisites](#prerequisites)
-    - [Setting up Environment Variables](#setting-up-environment-variables)
-    - [Building the Docker Image](#building-the-docker-image)
-  - [Getting Started](#getting-started)
-    - [Running the Container](#running-the-container)
-    - [Logging](#logging)
-  - [Support + Feedback](#support--feedback)
-  - [Vulnerability Reporting](#vulnerability-reporting)
-  - [Contribution](#contribution)
-  - [Thank You!](#thank-you)
-  - [What is CloudZero?](#what-is-cloudzero)
-  - [License](#license)
+- [Key Features](#key-features)
+- [Why This Tool Exists](#why-this-tool-exists)
+- [Quick Links](#quick-links)
+- [What's New in v2.0](#whats-new-in-v20)
+- [Installation](#installation)
+  - [Prerequisites](#prerequisites)
+  - [Azure Permissions Required](#azure-permissions-required)
+  - [Setting up Environment Variables](#setting-up-environment-variables)
+  - [Building the Docker Image](#building-the-docker-image)
+- [Getting Started](#getting-started)
+  - [Running the Container](#running-the-container)
+  - [Logging](#logging)
+- [Documentation](#documentation)
+- [Support + Feedback](#support--feedback)
+- [Vulnerability Reporting](#vulnerability-reporting)
+- [Contribution](#contribution)
+- [What is CloudZero?](#what-is-cloudzero)
+- [License](#license)
 
 ## Installation
 
@@ -69,25 +112,39 @@ This command builds a Docker image named azure-cloudzero-integration based on th
 
 ### Running the Container
 
-To transmit Azure recommendations to CloudZero Insights, use the following command:
+**⚠️ Always use dry-run first:**
+
+```bash
+make run-transmit ARGS="--dry-run"
+```
+
+This previews what would be uploaded without actually creating insights.
+
+**Transmit to CloudZero:**
 
 ```bash
 make run-transmit
 ```
 
-To export Azure recommendations to a CSV file, use the following command:
+**Export to CSV:**
 
 ```bash
 make run-export
 ```
 
-To do both, use the following command:
+**Both:**
 
 ```bash
 make run-both
 ```
 
-This command starts a container instance of azure-cloudzero-integration, using the environment variables defined in the .env file.
+**List existing insights:**
+
+```bash
+make run-transmit ARGS="--list-insights --limit=20"
+```
+
+> **Note:** First run may take 60-120 minutes for deployments with 10K+ existing CloudZero insights. This is normal and expected. Recommend scheduling overnight. See [Deployment Guide](docs/DEPLOYMENT.md) for scheduling examples.
 
 ### Logging
 
@@ -98,6 +155,20 @@ make logs CONTAINER_ID=<container_id>
 ```
 
 Replace <container_id> with the actual ID of your running container.
+
+## Documentation
+
+- **[Deployment Guide](docs/DEPLOYMENT.md)** - Scheduling options and examples
+  - Azure Container Instances (scheduled)
+  - Kubernetes CronJob
+  - Docker with cron
+  - GitHub Actions
+
+- **[Usage Guide](docs/USAGE.md)** - Commands and best practices
+  - Command reference
+  - Use cases and workflows
+  - Understanding output
+  - Troubleshooting
 
 ## Support + Feedback
 

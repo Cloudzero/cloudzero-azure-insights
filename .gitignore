@@ -72,8 +72,8 @@ instance/
 # Sphinx documentation
 docs/_build/
 
-# Project documentation (AI-assisted design docs)
-docs/
+# Internal documentation (AI-assisted design docs, implementation guides)
+internal-docs/
 
 # PyBuilder
 target/
