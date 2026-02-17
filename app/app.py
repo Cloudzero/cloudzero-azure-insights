@@ -134,14 +134,13 @@ class CloudZeroClient:
 
 
 def create_directory_if_not_exists(directory_name: str) -> None:
-    """
-    Creates a directory if it does not exist.
+    """Create a directory if it does not exist.
 
     Args:
-    - directory_name (str): Name of the directory to be created.
+        directory_name: Name of the directory to create
 
-    Returns:
-    - None
+    Raises:
+        OSError: If directory creation fails due to permissions or disk space
     """
     # Check if directory exists
     if not os.path.exists(directory_name):
@@ -153,27 +152,32 @@ def create_directory_if_not_exists(directory_name: str) -> None:
 
 
 def get_cloudzero_insights_list(cz_client: CloudZeroClient) -> List[Dict[str, Any]]:
-    """
-    Retrieve a list of insights from CloudZero.
+    """Retrieve insights from CloudZero API.
 
     Args:
-    - cz_client (CloudZeroClient): CloudZero API client
+        cz_client: Authenticated CloudZero API client
 
     Returns:
-    - list: List of insights or dict with error key
+        List of insight dictionaries from CloudZero
+
+    Raises:
+        requests.HTTPError: If API returns error status code
+        requests.RequestException: If network error occurs
     """
     return cz_client.get_insights()
 
 
 def list_azure_subscription_ids(subscription_client: SubscriptionClient) -> List[str]:
-    """
-    Lists the IDs of all Azure subscriptions.
+    """List all Azure subscription IDs accessible by the client.
 
     Args:
-    - subscription_client (SubscriptionClient): Azure subscription client
+        subscription_client: Authenticated Azure subscription client
 
     Returns:
-    - list: A list of strings, where each string is an Azure subscription ID.
+        List of subscription ID strings, empty list if error occurs
+
+    Raises:
+        azure.core.exceptions.AzureError: If Azure API call fails
     """
 
     logging.info("Listing Azure subscription IDs...")
@@ -196,15 +200,17 @@ def get_advisor_recommendations(
     azure_factory: AzureClientFactory,
     subscriptions: List[str]
 ) -> List[Dict[str, Any]]:
-    """
-    Fetches Azure Advisor recommendations for all subscriptions.
+    """Fetch Azure Advisor cost recommendations for all subscriptions.
 
     Args:
-    - azure_factory (AzureClientFactory): Factory for creating Azure clients
-    - subscriptions (list): List of subscription IDs
+        azure_factory: Factory for creating Azure Advisor clients
+        subscriptions: List of Azure subscription IDs
 
     Returns:
-    - list: A list of Azure Advisor recommendations.
+        List of recommendation dictionaries from Azure Advisor
+
+    Raises:
+        azure.core.exceptions.AzureError: If Azure API call fails for any subscription
     """
 
     logging.info(
@@ -306,14 +312,20 @@ def _merge_into_collapsed(collapsed: Dict[str, Dict[str, Any]], title: str, rec:
 
 
 def collapse_recommendations(recs: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
-    """
-    Collapses recommendations with the same title into a single record.
+    """Collapse recommendations with identical titles into single records.
+
+    Combines recommendations by title, aggregating cost impacts and
+    concatenating descriptions. Empty input returns empty dict.
 
     Args:
-    - recs (list of dict): List of recommendation records.
+        recs: List of Azure Advisor recommendation dictionaries
 
     Returns:
-    - dict: A new list of collapsed recommendation records.
+        Dictionary mapping recommendation titles to collapsed entries
+
+    Raises:
+        KeyError: If recommendation missing required fields
+        ValueError: If cost calculation fails due to invalid data
     """
 
     collapsed = {}
@@ -349,15 +361,20 @@ def filter_azure_advisor_recs(
     cz_insights: List[Dict[str, Any]],
     azure_advisor_recs: List[Dict[str, Any]]
 ) -> List[Dict[str, Any]]:
-    """
-    Filters Azure Advisor recommendations based on CloudZero insights.
+    """Filter out Azure Advisor recommendations already in CloudZero.
+
+    Prevents duplicate insights by checking recommendation IDs against
+    existing CloudZero insights. If no existing insights, returns all recs.
 
     Args:
-    - cz_insights (list of dict): List of insights from CloudZero.
-    - azure_advisor_recs (list of dict): List of recommendations from Azure Advisor.
+        cz_insights: List of existing CloudZero insight dictionaries
+        azure_advisor_recs: List of Azure Advisor recommendation dictionaries
 
     Returns:
-    - list of dict: Filtered Azure Advisor recommendations.
+        Filtered list of recommendations not yet in CloudZero
+
+    Raises:
+        AttributeError: If insight structure is invalid
     """
     try:
         logging.info(
