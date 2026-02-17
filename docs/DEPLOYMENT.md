@@ -22,11 +22,11 @@ For one-time or manual execution:
 # Build the image
 make build
 
-# Run transmission (recommended: use dry-run first)
-make run-transmit ARGS="--dry-run"
+# Run sync (recommended: use dry-run first)
+make dry-run
 
 # If dry-run looks good, run for real
-make run-transmit
+make run-sync
 ```
 
 ## Deployment Patterns
@@ -102,7 +102,7 @@ spec:
           containers:
           - name: insights
             image: <your-image>
-            command: ["python", "./app/app.py", "--transmit"]
+            command: ["python", "-m", "app.cli", "sync"]
             envFrom:
             - secretRef:
                 name: cloudzero-azure-credentials
@@ -121,7 +121,7 @@ spec:
 ```bash
 # Wrapper script (run-insights.sh)
 #!/bin/bash
-docker run --rm --env-file /path/to/.env <your-image> python ./app/app.py --transmit
+docker run --rm --env-file /path/to/.env <your-image> python -m app.cli sync
 
 # Crontab entry
 0 2 * * * /path/to/run-insights.sh >> /var/log/cz-insights.log 2>&1
@@ -188,17 +188,17 @@ Expected execution times based on deployment size:
 **Symptom**: Tool completes but no new insights appear in CloudZero
 
 **Possible causes**:
-1. **All recommendations already exist**: Check with `--list-insights --limit=10`
+1. **All recommendations already exist**: Check with `make run-list LIMIT=10`
 2. **Dry-run mode**: Ensure you're not using `--dry-run` flag
 3. **API errors**: Check logs for CloudZero API errors
 
 **Debug**:
 ```bash
 # Run with dry-run to see what would be uploaded
-make run-transmit ARGS="--dry-run"
+make dry-run
 
 # Check existing insights
-make run-transmit ARGS="--list-insights --limit=20"
+make run-list LIMIT=20
 ```
 
 ### Container Scheduling Issues
