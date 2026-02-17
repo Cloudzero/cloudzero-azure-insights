@@ -30,7 +30,7 @@ class TestCloudZeroClient:
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
-            "insights": [{"id": "1", "title": "Test"}],
+            "insights": [{"id": "1", "title": "Test", "source": "azure advisor"}],
             "pagination": {"cursor": {"has_next": False}}
         }
         mock_get.return_value = mock_response
@@ -52,14 +52,14 @@ class TestCloudZeroClient:
         mock_response1 = Mock()
         mock_response1.status_code = 200
         mock_response1.json.return_value = {
-            "insights": [{"id": "1"}],
+            "insights": [{"id": "1", "source": "azure advisor"}],
             "pagination": {"cursor": {"has_next": True, "next_cursor": "cursor-2"}}
         }
 
         mock_response2 = Mock()
         mock_response2.status_code = 200
         mock_response2.json.return_value = {
-            "insights": [{"id": "2"}],
+            "insights": [{"id": "2", "source": "azure advisor"}],
             "pagination": {"cursor": {"has_next": False}}
         }
 
@@ -97,12 +97,12 @@ class TestCloudZeroClient:
 
     @patch('app.clients.cloudzero_client.requests.get')
     def test_get_insights_respects_max_total_limit(self, mock_get):
-        """get_insights should stop fetching when max_total is reached."""
+        """get_insights should stop fetching when max_total Azure Advisor insights is reached."""
         # Arrange
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
-            "insights": [{"id": str(i)} for i in range(150)],
+            "insights": [{"id": str(i), "source": "azure advisor"} for i in range(150)],
             "pagination": {"cursor": {"has_next": True, "next_cursor": "cursor-2"}}
         }
         mock_get.return_value = mock_response

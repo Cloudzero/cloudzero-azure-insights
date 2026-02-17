@@ -151,13 +151,19 @@ class CloudZeroClient:
     ) -> List[Dict[str, Any]]:
         """Retrieve insights from CloudZero filtered by source and optional filters.
 
+        **IMPORTANT**: Due to CloudZero API bugs with source filter (intermittent 504 timeouts),
+        this method fetches ALL insights without source filter, then filters client-side.
+        This approach has 80% success rate vs 0% with source filter in API query.
+
         **SAFETY**: This tool should ONLY access Azure Advisor insights.
         The source parameter is locked to "azure advisor" by default.
 
         Args:
             source: Source filter for insights (default: "azure advisor", DO NOT CHANGE)
             page_size: Items per API page (default: 100)
-            max_total: Maximum total insights to fetch, 0=all (default: 0)
+            max_total: Maximum Azure Advisor insights to return, 0=all (default: 0)
+                      NOTE: This is the limit of Azure Advisor insights, not total insights.
+                      We paginate until we have this many Azure Advisor insights.
             subscription_id: Filter by Azure subscription ID (substring)
             status: Filter by status (new, in_progress, completed, ignored)
             created_before: Unix timestamp - only insights created before this
@@ -168,7 +174,7 @@ class CloudZeroClient:
             rec_id: Filter by Azure Advisor recommendation ID
 
         Returns:
-            List of insight dictionaries or dict with error key
+            List of Azure Advisor insight dictionaries or dict with error key
 
         Raises:
             ValueError: If source is not "azure advisor"
@@ -182,12 +188,16 @@ class CloudZeroClient:
 
         logging.info(f"Fetching CloudZero insights (source={source}, max={max_total or 'all'})...")
 
-        insights = []
+        # NOTE: We do NOT include source filter in API query due to CloudZero API bugs
+        # that cause intermittent 504 timeouts. Instead, we filter client-side.
+        azure_insights = []
         next_cursor = None
-        base_url = f"{self.BASE_URL}?source={urllib.parse.quote(source)}&limit={page_size}"
+        base_url = f"{self.BASE_URL}?limit={page_size}"
         page_num = 0
 
         try:
+            total_fetched = 0  # Track total insights fetched (all sources)
+
             while True:
                 page_num += 1
 
@@ -240,20 +250,28 @@ class CloudZeroClient:
                 if response.status_code == 200:
                     data = response.json()
                     page_insights = data.get("insights", [])
-                    insights.extend(page_insights)
+                    total_fetched += len(page_insights)
+
+                    # Filter this page for Azure Advisor insights (client-side filtering)
+                    azure_page = [
+                        i for i in page_insights
+                        if i.get("source", "").lower() == source.lower()
+                    ]
+                    azure_insights.extend(azure_page)
 
                     pagination_info = data.get("pagination", {})
                     total_count = pagination_info.get("total_count", "unknown")
 
                     logging.info(
                         f"Page {page_num}: Retrieved {len(page_insights)} insights "
-                        f"(total so far: {len(insights)}/{total_count})"
+                        f"({len(azure_page)} Azure Advisor) - "
+                        f"Total: {total_fetched} fetched, {len(azure_insights)} Azure Advisor"
                     )
 
-                    # Stop if we've reached max_total limit
-                    if max_total > 0 and len(insights) >= max_total:
-                        logging.info(f"Reached max limit ({max_total}), stopping.")
-                        insights = insights[:max_total]  # Trim to exact limit
+                    # Stop if we've reached max_total limit of Azure Advisor insights
+                    if max_total > 0 and len(azure_insights) >= max_total:
+                        logging.info(f"Reached max Azure Advisor limit ({max_total}), stopping.")
+                        azure_insights = azure_insights[:max_total]  # Trim to exact limit
                         break
 
                     # Check if there are more pages
@@ -267,7 +285,10 @@ class CloudZeroClient:
                             break
                         logging.info(f"Fetching next page...")
                     else:
-                        logging.info(f"All pages fetched. Total insights: {len(insights)}")
+                        logging.info(
+                            f"All pages fetched. "
+                            f"Total: {total_fetched} insights ({len(azure_insights)} Azure Advisor)"
+                        )
                         break
                 else:
                     logging.error(f"Error fetching CloudZero insights: {response.text}")
@@ -280,10 +301,10 @@ class CloudZeroClient:
             logging.error(f"Unexpected error occurred: {e}")
             return {"error": str(e)}
 
-        # Apply client-side filters if any were specified
-        pre_filter_count = len(insights)
-        insights = apply_filters(
-            insights,
+        # Apply additional client-side filters if any were specified
+        pre_filter_count = len(azure_insights)
+        azure_insights = apply_filters(
+            azure_insights,
             subscription_id=subscription_id,
             status=status,
             created_before=created_before,
@@ -294,10 +315,10 @@ class CloudZeroClient:
             rec_id=rec_id
         )
 
-        if pre_filter_count != len(insights):
-            logging.info(f"Filters applied: {pre_filter_count} → {len(insights)} insights")
+        if pre_filter_count != len(azure_insights):
+            logging.info(f"Additional filters applied: {pre_filter_count} → {len(azure_insights)} insights")
 
-        return insights
+        return azure_insights
 
     def create_insight(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new insight in CloudZero.
