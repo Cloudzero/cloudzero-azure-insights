@@ -5,6 +5,7 @@ import logging
 import requests
 import urllib.parse
 import re
+import time
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timezone
 
@@ -113,6 +114,14 @@ class CloudZeroClient:
 
     BASE_URL = "https://api.cloudzero.com/v2/insights"
 
+    # API performance is slow - CloudZero queries take ~28-30s regardless of parameters
+    # Setting timeout to 45s to account for API infrastructure delays
+    DEFAULT_TIMEOUT = 45  # seconds
+
+    # Retry configuration for transient failures (504 timeouts are intermittent)
+    MAX_RETRIES = 2
+    RETRY_DELAY = 2  # seconds between retries
+
     def __init__(self, api_key: str) -> None:
         """Initialize client with API key.
 
@@ -188,7 +197,45 @@ class CloudZeroClient:
                 else:
                     url = base_url
 
-                response = requests.get(url, headers=self.headers)
+                # Retry logic for transient failures (504 timeouts are intermittent)
+                last_error = None
+                for attempt in range(self.MAX_RETRIES + 1):
+                    try:
+                        # CloudZero API is slow (~28-30s per request)
+                        # Using 45s timeout to accommodate API performance
+                        response = requests.get(url, headers=self.headers, timeout=self.DEFAULT_TIMEOUT)
+
+                        if response.status_code == 200:
+                            break  # Success, exit retry loop
+
+                        elif response.status_code == 504:
+                            # Gateway timeout - retry
+                            last_error = f"504 Gateway Timeout on attempt {attempt + 1}"
+                            logging.warning(f"Page {page_num}: {last_error}")
+
+                            if attempt < self.MAX_RETRIES:
+                                logging.info(f"Retrying in {self.RETRY_DELAY}s...")
+                                time.sleep(self.RETRY_DELAY)
+                                continue
+                            else:
+                                logging.error(f"Max retries reached for page {page_num}")
+                                return {"error": f"CloudZero API timeout after {self.MAX_RETRIES + 1} attempts"}
+                        else:
+                            # Other error - don't retry
+                            logging.error(f"Error fetching CloudZero insights: {response.text}")
+                            return {"error": response.text}
+
+                    except requests.Timeout:
+                        last_error = f"Request timeout ({self.DEFAULT_TIMEOUT}s) on attempt {attempt + 1}"
+                        logging.warning(f"Page {page_num}: {last_error}")
+
+                        if attempt < self.MAX_RETRIES:
+                            logging.info(f"Retrying in {self.RETRY_DELAY}s...")
+                            time.sleep(self.RETRY_DELAY)
+                            continue
+                        else:
+                            logging.error(f"Max retries reached for page {page_num}")
+                            return {"error": f"Request timeout after {self.MAX_RETRIES + 1} attempts"}
 
                 if response.status_code == 200:
                     data = response.json()
@@ -263,7 +310,12 @@ class CloudZeroClient:
         """
         try:
             logging.info("Attempting to create a new CloudZero insight.")
-            response = requests.post(self.BASE_URL, json=data, headers=self.headers)
+            response = requests.post(
+                self.BASE_URL,
+                json=data,
+                headers=self.headers,
+                timeout=self.DEFAULT_TIMEOUT
+            )
 
             if response.status_code == 200:
                 logging.info("CloudZero insight created successfully.")
@@ -291,7 +343,7 @@ class CloudZeroClient:
         try:
             url = f"{self.BASE_URL}/{insight_id}"
             logging.info(f"Attempting to delete CloudZero insight: {insight_id}")
-            response = requests.delete(url, headers=self.headers)
+            response = requests.delete(url, headers=self.headers, timeout=self.DEFAULT_TIMEOUT)
 
             if response.status_code in [200, 204]:
                 logging.info(f"CloudZero insight {insight_id} deleted successfully.")
