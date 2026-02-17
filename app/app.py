@@ -6,6 +6,7 @@ import csv
 import logging
 import os
 import requests
+from typing import List, Dict, Any, Optional
 
 from azure.identity import ClientSecretCredential
 from azure.mgmt.resource import SubscriptionClient
@@ -21,7 +22,7 @@ logging.basicConfig(
 class AzureClientFactory:
     """Factory for creating Azure clients with shared credentials."""
 
-    def __init__(self, client_id, client_secret, tenant_id):
+    def __init__(self, client_id: str, client_secret: str, tenant_id: str) -> None:
         """Initialize factory with Azure credentials.
 
         Args:
@@ -35,11 +36,11 @@ class AzureClientFactory:
             tenant_id=tenant_id
         )
 
-    def create_subscription_client(self):
+    def create_subscription_client(self) -> SubscriptionClient:
         """Create an Azure SubscriptionClient."""
         return SubscriptionClient(self.credentials)
 
-    def create_advisor_client(self, subscription_id):
+    def create_advisor_client(self, subscription_id: str) -> AdvisorManagementClient:
         """Create an Azure AdvisorManagementClient for a subscription."""
         return AdvisorManagementClient(self.credentials, subscription_id)
 
@@ -49,7 +50,7 @@ class CloudZeroClient:
 
     BASE_URL = "https://api.cloudzero.com/v2/insights"
 
-    def __init__(self, api_key):
+    def __init__(self, api_key: str) -> None:
         """Initialize client with API key.
 
         Args:
@@ -61,7 +62,7 @@ class CloudZeroClient:
             "Content-Type": "application/json"
         }
 
-    def get_insights(self, source="azure advisor"):
+    def get_insights(self, source: str = "azure advisor") -> List[Dict[str, Any]]:
         """Retrieve insights from CloudZero filtered by source.
 
         Args:
@@ -104,7 +105,7 @@ class CloudZeroClient:
 
         return insights
 
-    def create_insight(self, data):
+    def create_insight(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new insight in CloudZero.
 
         Args:
@@ -132,7 +133,7 @@ class CloudZeroClient:
             return {"error": str(e)}
 
 
-def create_directory_if_not_exists(directory_name):
+def create_directory_if_not_exists(directory_name: str) -> None:
     """
     Creates a directory if it does not exist.
 
@@ -146,12 +147,12 @@ def create_directory_if_not_exists(directory_name):
     if not os.path.exists(directory_name):
         # Create directory
         os.makedirs(directory_name)
-        print(f"Directory '{directory_name}' created.")
+        logging.info(f"Directory '{directory_name}' created.")
     else:
-        print(f"Directory '{directory_name}' already exists.")
+        logging.info(f"Directory '{directory_name}' already exists.")
 
 
-def get_cloudzero_insights_list(cz_client):
+def get_cloudzero_insights_list(cz_client: CloudZeroClient) -> List[Dict[str, Any]]:
     """
     Retrieve a list of insights from CloudZero.
 
@@ -164,7 +165,7 @@ def get_cloudzero_insights_list(cz_client):
     return cz_client.get_insights()
 
 
-def list_azure_subscription_ids(subscription_client):
+def list_azure_subscription_ids(subscription_client: SubscriptionClient) -> List[str]:
     """
     Lists the IDs of all Azure subscriptions.
 
@@ -191,7 +192,10 @@ def list_azure_subscription_ids(subscription_client):
         return []
 
 
-def get_advisor_recommendations(azure_factory, subscriptions):
+def get_advisor_recommendations(
+    azure_factory: AzureClientFactory,
+    subscriptions: List[str]
+) -> List[Dict[str, Any]]:
     """
     Fetches Azure Advisor recommendations for all subscriptions.
 
@@ -229,7 +233,10 @@ def get_advisor_recommendations(azure_factory, subscriptions):
     return all_recommendations
 
 
-def create_cloudzero_insight(cz_client, data):
+def create_cloudzero_insight(
+    cz_client: CloudZeroClient,
+    data: Dict[str, Any]
+) -> Dict[str, Any]:
     """
     Sends a POST request to create an insight in CloudZero.
 
@@ -243,7 +250,7 @@ def create_cloudzero_insight(cz_client, data):
     return cz_client.create_insight(data)
 
 
-def collapse_recommendations(recs):
+def collapse_recommendations(recs: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
     """
     Collapses recommendations with the same title into a single record.
 
@@ -332,7 +339,10 @@ def collapse_recommendations(recs):
         return {}
 
 
-def filter_azure_advisor_recs(cz_insights, azure_advisor_recs):
+def filter_azure_advisor_recs(
+    cz_insights: List[Dict[str, Any]],
+    azure_advisor_recs: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
     """
     Filters Azure Advisor recommendations based on CloudZero insights.
 
@@ -379,7 +389,10 @@ def filter_azure_advisor_recs(cz_insights, azure_advisor_recs):
         return []
 
 
-def transmit_azure_insights(cz_client, recommendations):
+def transmit_azure_insights(
+    cz_client: CloudZeroClient,
+    recommendations: List[Dict[str, Any]]
+) -> None:
     logging.info("Transmitting Azure Advisor insights to CloudZero...")
 
     logging.info("Fetching existing CloudZero Azure insights...")
@@ -408,7 +421,7 @@ def transmit_azure_insights(cz_client, recommendations):
     )
 
 
-def convert_to_csv(data):
+def convert_to_csv(data: List[Dict[str, Any]]) -> tuple[List[str], List[Dict[str, Any]]]:
     logging.info("Converting data to CSV format")
     extended_properties_keys = set()
     for record in data:
@@ -448,7 +461,7 @@ def convert_to_csv(data):
     return csv_columns, csv_data
 
 
-def export_to_csv(recommendations):
+def export_to_csv(recommendations: List[Dict[str, Any]]) -> None:
     logging.info("Exporting recommendations to CSV")
     csv_columns, csv_data = convert_to_csv(recommendations)
 
@@ -467,7 +480,7 @@ def export_to_csv(recommendations):
         logging.error(f"IOError while writing to CSV: {e}")
 
 
-def main(args):
+def main(args: argparse.Namespace) -> None:
     logging.info("Starting application...")
 
     client_id = os.environ.get("AZURE_CLIENT_ID")

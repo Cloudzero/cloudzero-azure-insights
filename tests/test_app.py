@@ -174,8 +174,8 @@ class TestCreateDirectoryIfNotExists:
 
     @patch('app.app.os.path.exists')
     @patch('app.app.os.makedirs')
-    @patch('builtins.print')
-    def test_creates_directory_when_not_exists(self, mock_print, mock_makedirs, mock_exists):
+    @patch('app.app.logging.info')
+    def test_creates_directory_when_not_exists(self, mock_logging, mock_makedirs, mock_exists):
         """Should create directory when it doesn't exist."""
         # Arrange
         mock_exists.return_value = False
@@ -185,12 +185,12 @@ class TestCreateDirectoryIfNotExists:
 
         # Assert
         mock_makedirs.assert_called_once_with("test_dir")
-        mock_print.assert_called_once()
+        mock_logging.assert_called_once()
 
     @patch('app.app.os.path.exists')
     @patch('app.app.os.makedirs')
-    @patch('builtins.print')
-    def test_does_not_create_when_exists(self, mock_print, mock_makedirs, mock_exists):
+    @patch('app.app.logging.info')
+    def test_does_not_create_when_exists(self, mock_logging, mock_makedirs, mock_exists):
         """Should not create directory when it already exists."""
         # Arrange
         mock_exists.return_value = True
@@ -200,7 +200,7 @@ class TestCreateDirectoryIfNotExists:
 
         # Assert
         mock_makedirs.assert_not_called()
-        mock_print.assert_called_once()
+        mock_logging.assert_called_once()
 
 
 class TestGetCloudZeroInsightsList:
