@@ -137,38 +137,38 @@ def format_single_recommendation(rec: Dict[str, Any], subscription_id: str) -> s
     memory = extended.get("MaxMemoryP95", "N/A")
     network = extended.get("MaxTotalNetworkP95", "N/A")
 
-    # Build description
+    # Build description (plain text - CloudZero does not support markdown)
     parts = [
-        f"**Subscription:** {subscription_id}",
-        f"**Region:** {region}",
-        f"**Resource:** {resource}",
+        f"Subscription: {subscription_id}",
+        f"Region: {region}",
+        f"Resource: {resource}",
         "",
-        f"**Current SKU:** {current_sku}",
-        f"**Recommended SKU:** {target_sku}",
+        f"Current SKU: {current_sku}",
+        f"Recommended SKU: {target_sku}",
     ]
 
     if rec_message:
-        parts.append(f"**Reason:** {rec_message}")
+        parts.append(f"Reason: {rec_message}")
 
     parts.extend([
         "",
-        f"**Monthly Savings:** {currency} ${monthly_savings}",
-        f"**Annual Savings:** {currency} ${annual_savings}",
+        f"Monthly Savings: {currency} ${monthly_savings}",
+        f"Annual Savings: {currency} ${annual_savings}",
     ])
 
     if carbon_savings and carbon_savings != "0":
-        parts.append(f"**Carbon Savings:** {carbon_savings} kg CO2/month")
+        parts.append(f"Carbon Savings: {carbon_savings} kg CO2/month")
 
     # Add utilization if available
     if cpu != "N/A" or memory != "N/A":
         parts.extend([
             "",
-            f"**Utilization:** CPU: {cpu}%, Memory: {memory}%, Network: {network}%"
+            f"Utilization: CPU: {cpu}%, Memory: {memory}%, Network: {network}%"
         ])
 
     parts.extend([
         "",
-        f"**Azure Advisor Recommendation ID:** {rec_id}"
+        f"Azure Advisor Recommendation ID: {rec_id}"
     ])
 
     return "\n".join(parts)
