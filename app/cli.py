@@ -370,12 +370,6 @@ def list(
 
 @cli.command()
 @click.option(
-    "--source",
-    default="azure advisor",
-    help="Source filter for insights to delete",
-    show_default=True
-)
-@click.option(
     "--force",
     is_flag=True,
     help="Skip confirmation prompt"
@@ -398,7 +392,6 @@ def list(
 @click.option("--title", help="Filter by title substring (case-insensitive)")
 @click.option("--rec-id", help="Filter by Azure Advisor recommendation ID")
 def delete(
-    source: str,
     force: bool,
     dry_run: bool,
     subscription: Optional[str],
@@ -410,9 +403,10 @@ def delete(
     title: Optional[str],
     rec_id: Optional[str]
 ):
-    """Delete insights from CloudZero with optional filters
+    """Delete Azure Advisor insights from CloudZero with optional filters
 
     ⚠️  DESTRUCTIVE OPERATION - Use with caution!
+    ⚠️  This command ONLY deletes Azure Advisor insights (source="azure advisor")
     Always use --dry-run first to preview deletions.
 
     \b
@@ -429,15 +423,15 @@ def delete(
         # Create client
         cz_client = create_cloudzero_client()
 
-        # Delete insights with filters
+        # Delete insights with filters (source is always "azure advisor")
         if dry_run:
-            click.echo("[DRY RUN] Previewing deletions...")
+            click.echo("[DRY RUN] Previewing Azure Advisor insight deletions...")
         else:
-            click.echo(f"Deleting insights from CloudZero (source={source})...")
+            click.echo("Deleting Azure Advisor insights from CloudZero...")
 
         delete_insights(
             cz_client,
-            source_filter=source,
+            # source_filter always locked to "azure advisor" - not exposed to users
             force=force,
             dry_run=dry_run,
             subscription_id=subscription,
