@@ -294,11 +294,18 @@ def export(format: str, output: str):
     help="Number of insights to display (0=all)",
     show_default=True
 )
+@click.option("--subscription", help="Filter by Azure subscription ID")
 @click.option(
-    "--filter",
-    "filter_expr",
-    help="Filter expression (future feature)"
+    "--status",
+    type=click.Choice(["new", "in_progress", "completed", "ignored"], case_sensitive=False),
+    help="Filter by status"
 )
+@click.option("--created-before", type=int, help="Unix timestamp - show insights created before this")
+@click.option("--created-after", type=int, help="Unix timestamp - show insights created after this")
+@click.option("--min-cost", type=float, help="Minimum cost impact")
+@click.option("--max-cost", type=float, help="Maximum cost impact")
+@click.option("--title", help="Filter by title substring (case-insensitive)")
+@click.option("--rec-id", help="Filter by Azure Advisor recommendation ID")
 @click.option(
     "--format",
     "output_format",
@@ -307,26 +314,48 @@ def export(format: str, output: str):
     help="Output format",
     show_default=True
 )
-def list(limit: int, filter_expr: Optional[str], output_format: str):
-    """List existing CloudZero insights
+def list(
+    limit: int,
+    subscription: Optional[str],
+    status: Optional[str],
+    created_before: Optional[int],
+    created_after: Optional[int],
+    min_cost: Optional[float],
+    max_cost: Optional[float],
+    title: Optional[str],
+    rec_id: Optional[str],
+    output_format: str
+):
+    """List existing CloudZero insights with optional filters
 
     \b
     Examples:
-      cz-azure list                           # Show 10 insights
-      cz-azure list --limit 20                # Show 20 insights
-      cz-azure list --limit 0                 # Show all (slow!)
-      cz-azure list --filter "source=azure"   # Filter (future)
+      cz-azure list                                    # Show 10 insights
+      cz-azure list --limit 20                         # Show 20 insights
+      cz-azure list --status new                       # Show only new insights
+      cz-azure list --subscription sub-123             # Show insights from specific subscription
+      cz-azure list --min-cost 100                     # Show insights with cost >= $100
+      cz-azure list --title "Right-size"               # Show insights with "Right-size" in title
+      cz-azure list --status new --min-cost 100        # Combine filters
     """
     try:
-        if filter_expr:
-            click.secho("⚠ Filtering not yet implemented", fg="yellow")
-
         # Create client
         cz_client = create_cloudzero_client()
 
-        # Display insights
+        # Display insights with filters
         click.echo(f"Fetching insights from CloudZero (limit={limit or 'all'})...")
-        display_insights(cz_client, limit=limit)
+        display_insights(
+            cz_client,
+            limit=limit,
+            subscription_id=subscription,
+            status=status,
+            created_before=created_before,
+            created_after=created_after,
+            min_cost_impact=min_cost,
+            max_cost_impact=max_cost,
+            title_contains=title,
+            rec_id=rec_id
+        )
 
     except Exception as e:
         click.secho(f"❌ Error: {e}", fg="red", err=True)
@@ -341,8 +370,7 @@ def list(limit: int, filter_expr: Optional[str], output_format: str):
 
 @cli.command()
 @click.option(
-    "--filter",
-    "filter_expr",
+    "--source",
     default="azure advisor",
     help="Source filter for insights to delete",
     show_default=True
@@ -353,31 +381,74 @@ def list(limit: int, filter_expr: Optional[str], output_format: str):
     help="Skip confirmation prompt"
 )
 @click.option(
-    "--backup",
+    "--dry-run",
     is_flag=True,
-    help="Backup insights before deletion (future feature)"
+    help="Preview what would be deleted without actually deleting"
 )
-def delete(filter_expr: str, force: bool, backup: bool):
-    """Delete insights from CloudZero
+@click.option("--subscription", help="Filter by Azure subscription ID")
+@click.option(
+    "--status",
+    type=click.Choice(["new", "in_progress", "completed", "ignored"], case_sensitive=False),
+    help="Filter by status"
+)
+@click.option("--created-before", type=int, help="Unix timestamp - delete insights created before this")
+@click.option("--created-after", type=int, help="Unix timestamp - delete insights created after this")
+@click.option("--min-cost", type=float, help="Minimum cost impact")
+@click.option("--max-cost", type=float, help="Maximum cost impact")
+@click.option("--title", help="Filter by title substring (case-insensitive)")
+@click.option("--rec-id", help="Filter by Azure Advisor recommendation ID")
+def delete(
+    source: str,
+    force: bool,
+    dry_run: bool,
+    subscription: Optional[str],
+    status: Optional[str],
+    created_before: Optional[int],
+    created_after: Optional[int],
+    min_cost: Optional[float],
+    max_cost: Optional[float],
+    title: Optional[str],
+    rec_id: Optional[str]
+):
+    """Delete insights from CloudZero with optional filters
 
     ⚠️  DESTRUCTIVE OPERATION - Use with caution!
+    Always use --dry-run first to preview deletions.
 
     \b
     Examples:
-      cz-azure delete                         # Delete Azure Advisor insights (with confirmation)
-      cz-azure delete --force                 # Skip confirmation
-      cz-azure delete --filter "custom"       # Delete different source
+      cz-azure delete --dry-run                        # Preview all Azure Advisor deletions
+      cz-azure delete                                  # Delete all (with confirmation)
+      cz-azure delete --force                          # Delete all (skip confirmation)
+      cz-azure delete --subscription sub-123 --dry-run # Preview deletion for specific subscription
+      cz-azure delete --status ignored                 # Delete only ignored insights
+      cz-azure delete --max-cost 50                    # Delete insights with cost <= $50
+      cz-azure delete --title "Shutdown"               # Delete insights with "Shutdown" in title
     """
     try:
-        if backup:
-            click.secho("⚠ Backup feature not yet implemented", fg="yellow")
-
         # Create client
         cz_client = create_cloudzero_client()
 
-        # Delete insights
-        click.echo(f"Deleting insights from CloudZero (source={filter_expr})...")
-        delete_insights(cz_client, source_filter=filter_expr, force=force)
+        # Delete insights with filters
+        if dry_run:
+            click.echo("[DRY RUN] Previewing deletions...")
+        else:
+            click.echo(f"Deleting insights from CloudZero (source={source})...")
+
+        delete_insights(
+            cz_client,
+            source_filter=source,
+            force=force,
+            dry_run=dry_run,
+            subscription_id=subscription,
+            status=status,
+            created_before=created_before,
+            created_after=created_after,
+            min_cost_impact=min_cost,
+            max_cost_impact=max_cost,
+            title_contains=title,
+            rec_id=rec_id
+        )
 
     except Exception as e:
         click.secho(f"❌ Error: {e}", fg="red", err=True)

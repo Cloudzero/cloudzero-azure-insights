@@ -4,10 +4,108 @@
 import logging
 import requests
 import urllib.parse
-from typing import List, Dict, Any
+import re
+from typing import List, Dict, Any, Optional
+from datetime import datetime, timezone
 
 # Source filter constant - ensures tool ONLY touches Azure Advisor insights
 AZURE_ADVISOR_SOURCE = "azure advisor"
+
+
+# =============================================================================
+# CLIENT-SIDE FILTERING HELPERS
+# =============================================================================
+
+def apply_filters(
+    insights: List[Dict[str, Any]],
+    subscription_id: Optional[str] = None,
+    status: Optional[str] = None,
+    created_before: Optional[int] = None,
+    created_after: Optional[int] = None,
+    min_cost_impact: Optional[float] = None,
+    max_cost_impact: Optional[float] = None,
+    title_contains: Optional[str] = None,
+    rec_id: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """Apply client-side filters to insights list.
+
+    Filters are applied after fetching from API. All filters are optional
+    and combined with AND logic (insight must match all specified filters).
+
+    Args:
+        insights: List of insight dictionaries from API
+        subscription_id: Filter by Azure subscription ID (substring match)
+        status: Filter by status (new, in_progress, completed, ignored)
+        created_before: Unix timestamp - only insights created before this time
+        created_after: Unix timestamp - only insights created after this time
+        min_cost_impact: Minimum cost impact (inclusive)
+        max_cost_impact: Maximum cost impact (inclusive)
+        title_contains: Filter by title substring (case-insensitive)
+        rec_id: Filter by Azure Advisor recommendation ID (substring match in description)
+
+    Returns:
+        Filtered list of insights
+    """
+    filtered = insights
+
+    # Subscription ID filter (check in description)
+    if subscription_id:
+        filtered = [
+            i for i in filtered
+            if subscription_id.lower() in i.get("description", "").lower()
+        ]
+
+    # Status filter
+    if status:
+        status_lower = status.lower()
+        filtered = [
+            i for i in filtered
+            if i.get("status", "").lower() == status_lower
+        ]
+
+    # Created before filter
+    if created_before:
+        filtered = [
+            i for i in filtered
+            if int(i.get("created", 0)) < created_before
+        ]
+
+    # Created after filter
+    if created_after:
+        filtered = [
+            i for i in filtered
+            if int(i.get("created", 0)) > created_after
+        ]
+
+    # Cost impact filters
+    if min_cost_impact is not None:
+        filtered = [
+            i for i in filtered
+            if float(i.get("cost_impact", 0)) >= min_cost_impact
+        ]
+
+    if max_cost_impact is not None:
+        filtered = [
+            i for i in filtered
+            if float(i.get("cost_impact", 0)) <= max_cost_impact
+        ]
+
+    # Title substring filter (case-insensitive)
+    if title_contains:
+        title_lower = title_contains.lower()
+        filtered = [
+            i for i in filtered
+            if title_lower in i.get("title", "").lower()
+        ]
+
+    # Recommendation ID filter (check in description)
+    if rec_id:
+        filtered = [
+            i for i in filtered
+            if rec_id in i.get("description", "")
+        ]
+
+    return filtered
 
 
 class CloudZeroClient:
@@ -31,9 +129,18 @@ class CloudZeroClient:
         self,
         source: str = AZURE_ADVISOR_SOURCE,
         page_size: int = 100,
-        max_total: int = 0
+        max_total: int = 0,
+        # Client-side filters (applied after fetching)
+        subscription_id: Optional[str] = None,
+        status: Optional[str] = None,
+        created_before: Optional[int] = None,
+        created_after: Optional[int] = None,
+        min_cost_impact: Optional[float] = None,
+        max_cost_impact: Optional[float] = None,
+        title_contains: Optional[str] = None,
+        rec_id: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        """Retrieve insights from CloudZero filtered by source.
+        """Retrieve insights from CloudZero filtered by source and optional filters.
 
         **SAFETY**: This tool should ONLY access Azure Advisor insights.
         The source parameter is locked to "azure advisor" by default.
@@ -42,6 +149,14 @@ class CloudZeroClient:
             source: Source filter for insights (default: "azure advisor", DO NOT CHANGE)
             page_size: Items per API page (default: 100)
             max_total: Maximum total insights to fetch, 0=all (default: 0)
+            subscription_id: Filter by Azure subscription ID (substring)
+            status: Filter by status (new, in_progress, completed, ignored)
+            created_before: Unix timestamp - only insights created before this
+            created_after: Unix timestamp - only insights created after this
+            min_cost_impact: Minimum cost impact (inclusive)
+            max_cost_impact: Maximum cost impact (inclusive)
+            title_contains: Filter by title substring (case-insensitive)
+            rec_id: Filter by Azure Advisor recommendation ID
 
         Returns:
             List of insight dictionaries or dict with error key
@@ -117,6 +232,23 @@ class CloudZeroClient:
         except Exception as e:
             logging.error(f"Unexpected error occurred: {e}")
             return {"error": str(e)}
+
+        # Apply client-side filters if any were specified
+        pre_filter_count = len(insights)
+        insights = apply_filters(
+            insights,
+            subscription_id=subscription_id,
+            status=status,
+            created_before=created_before,
+            created_after=created_after,
+            min_cost_impact=min_cost_impact,
+            max_cost_impact=max_cost_impact,
+            title_contains=title_contains,
+            rec_id=rec_id
+        )
+
+        if pre_filter_count != len(insights):
+            logging.info(f"Filters applied: {pre_filter_count} → {len(insights)} insights")
 
         return insights
 
@@ -214,14 +346,34 @@ def create_cloudzero_insight(
     return cz_client.create_insight(data)
 
 
-def display_insights(cz_client: CloudZeroClient, limit: int = 10) -> None:
-    """Display existing Azure Advisor insights in a formatted list.
+def display_insights(
+    cz_client: CloudZeroClient,
+    limit: int = 10,
+    # Filter parameters
+    subscription_id: Optional[str] = None,
+    status: Optional[str] = None,
+    created_before: Optional[int] = None,
+    created_after: Optional[int] = None,
+    min_cost_impact: Optional[float] = None,
+    max_cost_impact: Optional[float] = None,
+    title_contains: Optional[str] = None,
+    rec_id: Optional[str] = None
+) -> None:
+    """Display existing Azure Advisor insights in a formatted list with optional filters.
 
     **SAFETY**: Only displays Azure Advisor insights, not other CloudZero insights.
 
     Args:
         cz_client: Authenticated CloudZero API client
         limit: Maximum number of insights to fetch and display (0 = all)
+        subscription_id: Filter by Azure subscription ID (substring)
+        status: Filter by status (new, in_progress, completed, ignored)
+        created_before: Unix timestamp - only insights created before this
+        created_after: Unix timestamp - only insights created after this
+        min_cost_impact: Minimum cost impact (inclusive)
+        max_cost_impact: Maximum cost impact (inclusive)
+        title_contains: Filter by title substring (case-insensitive)
+        rec_id: Filter by Azure Advisor recommendation ID
 
     Raises:
         requests.HTTPError: If API returns error status
@@ -235,8 +387,20 @@ def display_insights(cz_client: CloudZeroClient, limit: int = 10) -> None:
 
     logging.info(f"Fetching up to {limit if limit > 0 else 'ALL'} Azure Advisor insights from CloudZero...")
 
-    # Fetch Azure Advisor insights only (source filter enforced in get_insights)
-    insights = cz_client.get_insights(source=AZURE_ADVISOR_SOURCE, page_size=100, max_total=limit)
+    # Fetch Azure Advisor insights with filters
+    insights = cz_client.get_insights(
+        source=AZURE_ADVISOR_SOURCE,
+        page_size=100,
+        max_total=limit,
+        subscription_id=subscription_id,
+        status=status,
+        created_before=created_before,
+        created_after=created_after,
+        min_cost_impact=min_cost_impact,
+        max_cost_impact=max_cost_impact,
+        title_contains=title_contains,
+        rec_id=rec_id
+    )
 
     if isinstance(insights, dict) and "error" in insights:
         logging.error(f"Failed to fetch insights: {insights['error']}")
@@ -272,21 +436,57 @@ def display_insights(cz_client: CloudZeroClient, limit: int = 10) -> None:
         print(f"\nTotal: {display_count} insights displayed")
 
 
-def delete_insights(cz_client: CloudZeroClient, force: bool = False) -> None:
-    """Delete Azure Advisor insights from CloudZero with confirmation.
+def delete_insights(
+    cz_client: CloudZeroClient,
+    source_filter: str = AZURE_ADVISOR_SOURCE,
+    force: bool = False,
+    dry_run: bool = False,
+    # Filter parameters
+    subscription_id: Optional[str] = None,
+    status: Optional[str] = None,
+    created_before: Optional[int] = None,
+    created_after: Optional[int] = None,
+    min_cost_impact: Optional[float] = None,
+    max_cost_impact: Optional[float] = None,
+    title_contains: Optional[str] = None,
+    rec_id: Optional[str] = None
+) -> None:
+    """Delete Azure Advisor insights from CloudZero with confirmation and filters.
 
     **SAFETY**: This function ONLY deletes Azure Advisor insights.
     It cannot access or delete other CloudZero insights.
 
     Args:
         cz_client: Authenticated CloudZero API client
+        source_filter: Source filter (default: "azure advisor")
         force: Skip confirmation prompt if True (USE WITH CAUTION)
+        dry_run: Preview deletions without actually deleting
+        subscription_id: Filter by Azure subscription ID (substring)
+        status: Filter by status (new, in_progress, completed, ignored)
+        created_before: Unix timestamp - only insights created before this
+        created_after: Unix timestamp - only insights created after this
+        min_cost_impact: Minimum cost impact (inclusive)
+        max_cost_impact: Maximum cost impact (inclusive)
+        title_contains: Filter by title substring (case-insensitive)
+        rec_id: Filter by Azure Advisor recommendation ID
 
     Raises:
         requests.HTTPError: If API returns error status
     """
-    logging.info(f"Fetching Azure Advisor insights to delete...")
-    insights = get_cloudzero_insights_list(cz_client)
+    logging.info(f"Fetching Azure Advisor insights to delete (source={source_filter})...")
+
+    # Fetch insights with filters
+    insights = cz_client.get_insights(
+        source=source_filter,
+        subscription_id=subscription_id,
+        status=status,
+        created_before=created_before,
+        created_after=created_after,
+        min_cost_impact=min_cost_impact,
+        max_cost_impact=max_cost_impact,
+        title_contains=title_contains,
+        rec_id=rec_id
+    )
 
     if isinstance(insights, dict) and "error" in insights:
         logging.error(f"Failed to fetch insights: {insights['error']}")
@@ -297,20 +497,52 @@ def delete_insights(cz_client: CloudZeroClient, force: bool = False) -> None:
         return
 
     # Verify all insights are Azure Advisor (safety check)
-    non_azure = [i for i in insights if i.get("source", "").lower() != AZURE_ADVISOR_SOURCE.lower()]
+    non_azure = [i for i in insights if i.get("source", "").lower() != source_filter.lower()]
     if non_azure:
         logging.error(
-            f"SAFETY ERROR: Found {len(non_azure)} non-Azure Advisor insights! "
+            f"SAFETY ERROR: Found {len(non_azure)} non-{source_filter} insights! "
             "This should never happen. Aborting deletion."
         )
-        print(f"\n❌ ERROR: Found non-Azure Advisor insights. Aborting for safety.")
+        print(f"\n❌ ERROR: Found non-{source_filter} insights. Aborting for safety.")
         return
 
-    print(f"\n⚠️  Found {len(insights)} Azure Advisor insights to delete:")
+    # Show insights to be deleted
+    if dry_run:
+        print(f"\n[DRY RUN] Would delete {len(insights)} Azure Advisor insights:")
+    else:
+        print(f"\n⚠️  Found {len(insights)} Azure Advisor insights to delete:")
+
     for idx, insight in enumerate(insights[:5], 1):
         print(f"  {idx}. {insight.get('title', 'No title')} (${insight.get('cost_impact', 'N/A')})")
     if len(insights) > 5:
         print(f"  ... and {len(insights) - 5} more")
+
+    # Show applied filters
+    filters_applied = []
+    if subscription_id:
+        filters_applied.append(f"subscription={subscription_id}")
+    if status:
+        filters_applied.append(f"status={status}")
+    if created_before:
+        filters_applied.append(f"created_before={created_before}")
+    if created_after:
+        filters_applied.append(f"created_after={created_after}")
+    if min_cost_impact is not None:
+        filters_applied.append(f"min_cost>=${min_cost_impact}")
+    if max_cost_impact is not None:
+        filters_applied.append(f"max_cost<=${max_cost_impact}")
+    if title_contains:
+        filters_applied.append(f"title contains '{title_contains}'")
+    if rec_id:
+        filters_applied.append(f"rec_id={rec_id}")
+
+    if filters_applied:
+        print(f"\n  Filters: {', '.join(filters_applied)}")
+
+    # Dry run - just show what would be deleted
+    if dry_run:
+        print(f"\n[DRY RUN] No insights were actually deleted")
+        return
 
     # Confirmation prompt (unless forced)
     if not force:
@@ -330,8 +562,8 @@ def delete_insights(cz_client: CloudZeroClient, force: bool = False) -> None:
         insight_source = insight.get("source", "")
 
         # Double-check source before deletion (paranoid safety check)
-        if insight_source.lower() != AZURE_ADVISOR_SOURCE.lower():
-            logging.error(f"SAFETY: Skipping {insight_id} - source is '{insight_source}', not Azure Advisor")
+        if insight_source.lower() != source_filter.lower():
+            logging.error(f"SAFETY: Skipping {insight_id} - source is '{insight_source}', not '{source_filter}'")
             failed += 1
             continue
 
