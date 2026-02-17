@@ -6,6 +6,7 @@ import csv
 import logging
 import os
 import requests
+import urllib.parse
 from typing import List, Dict, Any, Optional
 
 from azure.identity import ClientSecretCredential
@@ -62,11 +63,12 @@ class CloudZeroClient:
             "Content-Type": "application/json"
         }
 
-    def get_insights(self, source: str = "azure advisor") -> List[Dict[str, Any]]:
+    def get_insights(self, source: str = "azure advisor", limit: int = 100) -> List[Dict[str, Any]]:
         """Retrieve insights from CloudZero filtered by source.
 
         Args:
             source: Source filter for insights (default: "azure advisor")
+            limit: Items per page (default: 100)
 
         Returns:
             List of insight dictionaries or dict with error key
@@ -75,22 +77,46 @@ class CloudZeroClient:
 
         insights = []
         next_cursor = None
-        base_url = f"{self.BASE_URL}?source={source}"
+        base_url = f"{self.BASE_URL}?source={urllib.parse.quote(source)}&limit={limit}"
+        page_num = 0
 
         try:
             while True:
-                url = base_url + (f"&cursor={next_cursor}" if next_cursor else "")
+                page_num += 1
+
+                # URL-encode the cursor as required by CloudZero API
+                if next_cursor:
+                    url = base_url + f"&cursor={urllib.parse.quote(next_cursor)}"
+                else:
+                    url = base_url
+
                 response = requests.get(url, headers=self.headers)
 
                 if response.status_code == 200:
                     data = response.json()
-                    insights.extend(data.get("insights", []))
-                    logging.info(f"Retrieved {len(data.get('insights', []))} insights.")
+                    page_insights = data.get("insights", [])
+                    insights.extend(page_insights)
 
                     pagination_info = data.get("pagination", {})
-                    if pagination_info.get("has_next"):
-                        next_cursor = pagination_info["cursor"]["next_cursor"]
+                    total_count = pagination_info.get("total_count", "unknown")
+
+                    logging.info(
+                        f"Page {page_num}: Retrieved {len(page_insights)} insights "
+                        f"(total so far: {len(insights)}/{total_count})"
+                    )
+
+                    # Check if there are more pages
+                    cursor_info = pagination_info.get("cursor", {})
+                    has_next = cursor_info.get("has_next", False)
+
+                    if has_next:
+                        next_cursor = cursor_info.get("next_cursor")
+                        if not next_cursor:
+                            logging.warning("has_next is true but next_cursor is missing!")
+                            break
+                        logging.info(f"Fetching next page...")
                     else:
+                        logging.info(f"All pages fetched. Total insights: {len(insights)}")
                         break
                 else:
                     logging.error(f"Error fetching CloudZero insights: {response.text}")
@@ -130,6 +156,34 @@ class CloudZeroClient:
 
         except Exception as e:
             logging.error(f"An error occurred while creating CloudZero insight: {e}")
+            return {"error": str(e)}
+
+    def delete_insight(self, insight_id: str) -> Dict[str, Any]:
+        """Delete an insight from CloudZero.
+
+        Args:
+            insight_id: ID of the insight to delete
+
+        Returns:
+            Response dictionary from API or dict with error key
+        """
+        try:
+            url = f"{self.BASE_URL}/{insight_id}"
+            logging.info(f"Attempting to delete CloudZero insight: {insight_id}")
+            response = requests.delete(url, headers=self.headers)
+
+            if response.status_code in [200, 204]:
+                logging.info(f"CloudZero insight {insight_id} deleted successfully.")
+                return {"success": True, "insight_id": insight_id}
+            else:
+                logging.error(
+                    f"Failed to delete CloudZero insight {insight_id}. "
+                    f"Status code: {response.status_code}, Response: {response.text}"
+                )
+                return {"error": response.text}
+
+        except Exception as e:
+            logging.error(f"An error occurred while deleting CloudZero insight: {e}")
             return {"error": str(e)}
 
 
@@ -523,6 +577,73 @@ def export_to_csv(recommendations: List[Dict[str, Any]]) -> None:
         logging.info(f"Data successfully exported to {csv_file}")
     except IOError as e:
         logging.error(f"IOError while writing to CSV: {e}")
+
+
+def delete_insights(cz_client: CloudZeroClient, source_filter: str = "azure advisor", force: bool = False) -> None:
+    """Delete insights from CloudZero with confirmation.
+
+    Args:
+        cz_client: Authenticated CloudZero API client
+        source_filter: Filter insights by source (default: "azure advisor")
+        force: Skip confirmation prompt if True
+
+    Raises:
+        requests.HTTPError: If API returns error status
+    """
+    logging.info(f"Fetching insights to delete (source={source_filter})...")
+    insights = get_cloudzero_insights_list(cz_client)
+
+    if "error" in insights:
+        logging.error(f"Failed to fetch insights: {insights['error']}")
+        return
+
+    if not insights:
+        print("\n✓ No insights found to delete")
+        return
+
+    # Filter by source
+    filtered = [i for i in insights if i.get("source", "").lower() == source_filter.lower()]
+
+    if not filtered:
+        print(f"\n✓ No insights found with source='{source_filter}'")
+        return
+
+    print(f"\n⚠️  Found {len(filtered)} insights to delete:")
+    for idx, insight in enumerate(filtered[:5], 1):
+        print(f"  {idx}. {insight.get('title', 'No title')} (${insight.get('cost_impact', 'N/A')})")
+    if len(filtered) > 5:
+        print(f"  ... and {len(filtered) - 5} more")
+
+    # Confirmation prompt (unless forced)
+    if not force:
+        print(f"\n⚠️  WARNING: This will delete {len(filtered)} insights from CloudZero!")
+        confirm = input("Type 'DELETE' to confirm: ")
+        if confirm != "DELETE":
+            print("❌ Deletion cancelled")
+            return
+
+    print(f"\n🗑️  Deleting {len(filtered)} insights...")
+    deleted = 0
+    failed = 0
+
+    for insight in filtered:
+        insight_id = insight.get("id")
+        if not insight_id:
+            logging.warning("Insight missing ID, skipping")
+            failed += 1
+            continue
+
+        response = cz_client.delete_insight(insight_id)
+
+        if "error" in response:
+            logging.error(f"Failed to delete {insight_id}: {response['error']}")
+            failed += 1
+        else:
+            deleted += 1
+
+    print(f"\n✓ Deleted {deleted}/{deleted + failed} insights")
+    if failed > 0:
+        print(f"⚠️  Failed to delete {failed} insights (check logs)")
 
 
 def display_insights(cz_client: CloudZeroClient) -> None:
