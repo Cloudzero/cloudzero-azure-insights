@@ -137,7 +137,7 @@ class CloudZeroClient:
     def get_insights(
         self,
         source: str = AZURE_ADVISOR_SOURCE,
-        page_size: int = 100,
+        page_size: int = 1000,
         max_total: int = 0,
         # Client-side filters (applied after fetching)
         subscription_id: Optional[str] = None,
@@ -160,7 +160,7 @@ class CloudZeroClient:
 
         Args:
             source: Source filter for insights (default: "azure advisor", DO NOT CHANGE)
-            page_size: Items per API page (default: 100)
+            page_size: Items per API page (default: 1000, large to minimize 30s requests)
             max_total: Maximum Azure Advisor insights to return, 0=all (default: 0)
                       NOTE: This is the limit of Azure Advisor insights, not total insights.
                       We paginate until we have this many Azure Advisor insights.
@@ -463,7 +463,7 @@ def display_insights(
     # Fetch Azure Advisor insights with filters
     insights = cz_client.get_insights(
         source=AZURE_ADVISOR_SOURCE,
-        page_size=100,
+        # page_size uses default (1000) to minimize 30s API requests
         max_total=limit,
         subscription_id=subscription_id,
         status=status,
