@@ -165,7 +165,35 @@ def main(args: argparse.Namespace) -> None:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="CloudZero Azure Insights")
+    import warnings
+    import sys
+
+    # Check if user is trying to use the new CLI
+    if len(sys.argv) > 1 and sys.argv[1] in ["sync", "export", "list", "delete", "validate"]:
+        print("\n⚠️  NOTICE: You're using the new CLI syntax!")
+        print("⚠️  Please use: python -m app.cli instead of python -m app.app")
+        print("⚠️  Or install and use: cz-azure <command>\n")
+        # Try to delegate to new CLI
+        try:
+            from app.cli import cli
+            cli()
+            sys.exit(0)
+        except ImportError:
+            print("❌ New CLI not available. Install click: pip install click")
+            sys.exit(1)
+
+    # Show deprecation warning for old syntax
+    print("\n⚠️  DEPRECATION WARNING")
+    print("⚠️  The flag-based CLI (--transmit, --export-csv) is deprecated.")
+    print("⚠️  Please migrate to the new subcommand CLI:")
+    print("⚠️    Old: python -m app.app --transmit --dry-run")
+    print("⚠️    New: python -m app.cli sync --dry-run")
+    print("⚠️  See docs/design/cli-subcommand-analysis.md for migration guide")
+    print("⚠️  Legacy support will be removed in v3.0.0\n")
+
+    parser = argparse.ArgumentParser(
+        description="CloudZero Azure Insights (LEGACY - See deprecation warning above)"
+    )
     parser.add_argument(
         "--transmit", action="store_true", help="Transmit Azure Insights to CloudZero"
     )
