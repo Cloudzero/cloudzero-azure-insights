@@ -5,10 +5,12 @@
 
 from app.transformers.recommendations import (
     collapse_recommendations,
-    filter_azure_advisor_recs
+    filter_azure_advisor_recs,
+    create_individual_insight
 )
 
 __all__ = [
     "collapse_recommendations",
     "filter_azure_advisor_recs",
+    "create_individual_insight",
 ]

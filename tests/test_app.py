@@ -14,22 +14,38 @@ class TestTransmitAzureInsights:
 
     @patch('app.app.get_cloudzero_insights_list')
     @patch('app.app.filter_azure_advisor_recs')
-    @patch('app.app.collapse_recommendations')
+    @patch('app.app.create_individual_insight')
     @patch('app.app.create_cloudzero_insight')
-    def test_transmits_filtered_and_collapsed_recommendations(
-        self, mock_create, mock_collapse, mock_filter, mock_get_insights
+    def test_transmits_filtered_recommendations_with_one_to_one_mapping(
+        self, mock_create, mock_create_individual, mock_filter, mock_get_insights
     ):
-        """Should fetch, filter, collapse, and transmit recommendations."""
+        """Should fetch, filter, and transmit recommendations using 1:1 mapping."""
         # Arrange
         mock_client = Mock(spec=CloudZeroClient)
         mock_get_insights.return_value = []
-        mock_filter.return_value = [{"name": "rec-1"}]
-        mock_collapse.return_value = {
-            "title1": {"title": "Test", "cost_impact": "100"}
+        mock_filter.return_value = [{
+            "name": "rec-1",
+            "id": "/subscriptions/sub-123/providers/...",
+            "short_description": {"problem": "Test problem"},
+            "extended_properties": {"savingsAmount": "100"}
+        }]
+        mock_create_individual.return_value = {
+            "title": "Test",
+            "cost_impact": "100",
+            "category": "cost",
+            "effort": "medium",
+            "status": "new",
+            "source": "Azure Advisor",
+            "description": "Test description"
         }
         mock_create.return_value = {"insight": {"title": "Test"}}
 
-        recommendations = [{"name": "rec-1"}]
+        recommendations = [{
+            "name": "rec-1",
+            "id": "/subscriptions/sub-123/providers/...",
+            "short_description": {"problem": "Test problem"},
+            "extended_properties": {"savingsAmount": "100"}
+        }]
 
         # Act
         transmit_azure_insights(mock_client, recommendations)
@@ -37,32 +53,42 @@ class TestTransmitAzureInsights:
         # Assert
         mock_get_insights.assert_called_once_with(mock_client)
         mock_filter.assert_called_once()
-        mock_collapse.assert_called_once()
+        mock_create_individual.assert_called_once()
         mock_create.assert_called_once()
 
     @patch('app.app.get_cloudzero_insights_list')
     @patch('app.app.filter_azure_advisor_recs')
-    @patch('app.app.collapse_recommendations')
+    @patch('app.app.create_individual_insight')
     @patch('app.app.create_cloudzero_insight')
     def test_dry_run_does_not_create_insights(
-        self, mock_create, mock_collapse, mock_filter, mock_get_insights
+        self, mock_create, mock_create_individual, mock_filter, mock_get_insights
     ):
         """Should not create insights when dry_run is True."""
         # Arrange
         mock_client = Mock(spec=CloudZeroClient)
         mock_get_insights.return_value = []
-        mock_filter.return_value = [{"name": "rec-1"}]
-        mock_collapse.return_value = {
-            "title1": {
-                "title": "Test",
-                "cost_impact": "100",
-                "description": "Test description",
-                "category": "optimization",
-                "effort": "medium"
-            }
+        mock_filter.return_value = [{
+            "name": "rec-1",
+            "id": "/subscriptions/sub-123/providers/...",
+            "short_description": {"problem": "Test problem"},
+            "extended_properties": {"savingsAmount": "100"}
+        }]
+        mock_create_individual.return_value = {
+            "title": "Test",
+            "cost_impact": "100",
+            "description": "Test description",
+            "category": "cost",
+            "effort": "medium",
+            "status": "new",
+            "source": "Azure Advisor"
         }
 
-        recommendations = [{"name": "rec-1"}]
+        recommendations = [{
+            "name": "rec-1",
+            "id": "/subscriptions/sub-123/providers/...",
+            "short_description": {"problem": "Test problem"},
+            "extended_properties": {"savingsAmount": "100"}
+        }]
 
         # Act
         transmit_azure_insights(mock_client, recommendations, dry_run=True)
@@ -72,22 +98,38 @@ class TestTransmitAzureInsights:
 
     @patch('app.app.get_cloudzero_insights_list')
     @patch('app.app.filter_azure_advisor_recs')
-    @patch('app.app.collapse_recommendations')
+    @patch('app.app.create_individual_insight')
     @patch('app.app.create_cloudzero_insight')
     def test_handles_failed_insight_creation(
-        self, mock_create, mock_collapse, mock_filter, mock_get_insights
+        self, mock_create, mock_create_individual, mock_filter, mock_get_insights
     ):
         """Should track failed insights when API returns error."""
         # Arrange
         mock_client = Mock(spec=CloudZeroClient)
         mock_get_insights.return_value = []
-        mock_filter.return_value = [{"name": "rec-1"}]
-        mock_collapse.return_value = {
-            "title1": {"title": "Test", "cost_impact": "100"}
+        mock_filter.return_value = [{
+            "name": "rec-1",
+            "id": "/subscriptions/sub-123/providers/...",
+            "short_description": {"problem": "Test problem"},
+            "extended_properties": {"savingsAmount": "100"}
+        }]
+        mock_create_individual.return_value = {
+            "title": "Test",
+            "cost_impact": "100",
+            "category": "cost",
+            "effort": "medium",
+            "status": "new",
+            "source": "Azure Advisor",
+            "description": "Test description"
         }
         mock_create.return_value = {"error": "API Error"}
 
-        recommendations = [{"name": "rec-1"}]
+        recommendations = [{
+            "name": "rec-1",
+            "id": "/subscriptions/sub-123/providers/...",
+            "short_description": {"problem": "Test problem"},
+            "extended_properties": {"savingsAmount": "100"}
+        }]
 
         # Act
         transmit_azure_insights(mock_client, recommendations)

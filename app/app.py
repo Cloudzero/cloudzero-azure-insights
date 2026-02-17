@@ -15,7 +15,11 @@ from app.clients import (
     create_cloudzero_insight,
     display_insights
 )
-from app.transformers import collapse_recommendations, filter_azure_advisor_recs
+from app.transformers import (
+    collapse_recommendations,
+    filter_azure_advisor_recs,
+    create_individual_insight
+)
 from app.exporters import export_to_csv
 
 
@@ -30,7 +34,11 @@ def transmit_azure_insights(
     recommendations: List[Dict[str, Any]],
     dry_run: bool = False
 ) -> None:
-    """Transmit Azure Advisor insights to CloudZero.
+    """Transmit Azure Advisor insights to CloudZero with 1:1 mapping.
+
+    Creates one CloudZero insight per Azure Advisor recommendation
+    instead of collapsing by title. Provides better tracking, filtering,
+    and actionability.
 
     Args:
         cz_client: Authenticated CloudZero API client
@@ -41,7 +49,13 @@ def transmit_azure_insights(
         requests.HTTPError: If CloudZero API call fails
     """
     mode = "DRY RUN - Previewing" if dry_run else "Transmitting"
-    logging.info(f"{mode} Azure Advisor insights to CloudZero...")
+    logging.info(f"{mode} Azure Advisor insights to CloudZero (1:1 mapping)...")
+
+    # Warning for first-time users about 1:1 mapping
+    if not dry_run and recommendations:
+        print("\n⚠️  Using 1:1 mapping: One CloudZero insight per Azure recommendation")
+        print(f"⚠️  This will create {len(recommendations)} insights (before duplicate filtering)")
+        print("⚠️  Run with --dry-run first to preview changes\n")
 
     logging.info("Fetching existing CloudZero Azure insights...")
     cz_insights = get_cloudzero_insights_list(cz_client)
@@ -49,31 +63,41 @@ def transmit_azure_insights(
     logging.info("Filtering Azure Advisor recommendations...")
     filtered_recs = filter_azure_advisor_recs(cz_insights, recommendations)
 
+    logging.info(f"Processing {len(filtered_recs)} recommendations individually...")
+
     insights_created = 0
     insights_failed = 0
 
-    for rec in collapse_recommendations(filtered_recs).values():
-        if dry_run:
-            # Preview mode: just log what would be uploaded
-            desc_preview = rec['description'][:100] + "..." if len(rec['description']) > 100 else rec['description']
-            print(f"\n[DRY RUN] Would upload:")
-            print(f"  Title: {rec['title']}")
-            print(f"  Cost Impact: ${rec['cost_impact']}")
-            print(f"  Category: {rec['category']} | Effort: {rec['effort']}")
-            print(f"  Description: {desc_preview}")
-            insights_created += 1
-        else:
-            # Actually upload
-            response = create_cloudzero_insight(cz_client, rec)
+    # Process each recommendation individually (no collapsing)
+    for rec in filtered_recs:
+        try:
+            # Extract subscription ID from recommendation
+            subscription_id = rec.get("id", "").split("/")[2] if "/" in rec.get("id", "") else "unknown"
 
-            if "error" in response:
-                logging.info(f"Insight NOT transmitted: {rec['title']}")
-                insights_failed += 1
-            else:
-                logging.info(
-                    f"Insight transmitted to CloudZero: {response['insight']['title']}"
-                )
+            # Create individual insight
+            insight_data = create_individual_insight(rec, subscription_id)
+
+            if dry_run:
+                # Preview mode
+                print(f"\n[DRY RUN] Would upload:")
+                print(f"  Title: {insight_data['title']}")
+                print(f"  Cost Impact: ${insight_data['cost_impact']}")
+                print(f"  Category: {insight_data['category']} | Effort: {insight_data['effort']}")
                 insights_created += 1
+            else:
+                # Actually upload
+                response = create_cloudzero_insight(cz_client, insight_data)
+
+                if "error" in response:
+                    logging.error(f"Failed to create insight: {response['error']}")
+                    insights_failed += 1
+                else:
+                    logging.info(f"Insight transmitted: {insight_data['title']}")
+                    insights_created += 1
+
+        except (KeyError, TypeError) as e:
+            logging.error(f"Error processing recommendation: {e}")
+            insights_failed += 1
 
     summary = f"[DRY RUN] Would upload" if dry_run else "Insights transmitted to CloudZero"
     logging.info(f"{summary}: {insights_created}/{insights_created + insights_failed}")
