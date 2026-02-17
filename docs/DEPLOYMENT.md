@@ -1,15 +1,16 @@
 # Deployment Guide
 
-This guide provides examples for deploying the CloudZero Azure Insights integration in various environments.
+This guide provides patterns and examples for deploying the CloudZero Azure Insights integration.
+
+> **⚠️ Note**: Examples below are patterns, not tested configurations. Adjust for your environment. We welcome PRs with tested examples!
 
 ## Table of Contents
 
 - [Quick Start](#quick-start)
-- [Scheduled Execution](#scheduled-execution)
-  - [Azure Container Instances](#azure-container-instances)
-  - [Kubernetes CronJob](#kubernetes-cronjob)
-  - [Docker with Cron](#docker-with-cron)
-  - [GitHub Actions](#github-actions)
+- [Deployment Patterns](#deployment-patterns)
+  - [Scheduled Containers](#scheduled-containers)
+  - [Kubernetes Jobs](#kubernetes-jobs)
+  - [Cron Jobs](#cron-jobs)
 - [Performance Considerations](#performance-considerations)
 - [Troubleshooting](#troubleshooting)
 
@@ -28,7 +29,7 @@ make run-transmit ARGS="--dry-run"
 make run-transmit
 ```
 
-## Scheduled Execution
+## Deployment Patterns
 
 ### Recommended: Run on a Schedule
 
@@ -39,47 +40,60 @@ This tool is designed for **periodic execution** (daily or weekly). Benefits:
 - ✅ Ensures CloudZero insights stay up-to-date with Azure Advisor
 - ✅ Simple and reliable
 
-### Azure Container Instances
+**Common schedule patterns:**
+- Daily: Run at 2 AM every day
+- Weekly: Run at 2 AM every Sunday
+- Twice daily: Run at 2 AM and 2 PM
 
-**Best for**: Azure-native deployments
+### Scheduled Containers
 
-Create a scheduled container instance:
+**Concept**: Use your cloud provider's container scheduling service.
 
+**Azure Container Instances** - Schedule a container to run periodically:
 ```bash
+# General pattern (adjust for your environment)
 az container create \
-  --resource-group myResourceGroup \
-  --name cloudzero-azure-insights \
-  --image cloudzero/azure-insights:latest \
+  --resource-group <your-rg> \
+  --name cloudzero-insights \
+  --image <your-registry>/cloudzero-insights:latest \
   --restart-policy Never \
-  --command-line "python ./app/app.py --transmit" \
-  --environment-variables \
-    AZURE_CLIENT_ID=$AZURE_CLIENT_ID \
-    AZURE_CLIENT_SECRET=$AZURE_CLIENT_SECRET \
-    AZURE_TENANT_ID=$AZURE_TENANT_ID \
-    CLOUDZERO_API_KEY=$CLOUDZERO_API_KEY \
-  --schedule "0 2 * * *"  # 2 AM daily
+  --environment-variables <your-env-vars> \
+  --schedule "0 2 * * *"
 ```
 
-**Schedule options:**
-- Daily: `"0 2 * * *"` (2 AM every day)
-- Weekly: `"0 2 * * 0"` (2 AM every Sunday)
-- Twice daily: `"0 2,14 * * *"` (2 AM and 2 PM)
+**AWS ECS Scheduled Tasks** - Use EventBridge with ECS tasks:
+```yaml
+# EventBridge rule pattern
+ScheduleExpression: cron(0 2 * * ? *)
+Target: ECS Task
+```
 
-### Kubernetes CronJob
+**GCP Cloud Run Jobs** - Schedule Cloud Run executions:
+```bash
+# General pattern
+gcloud run jobs create cloudzero-insights \
+  --image <your-image> \
+  --schedule "0 2 * * *"
+```
 
-**Best for**: Kubernetes environments
+### Kubernetes Jobs
 
-Create `cloudzero-insights-cronjob.yaml`:
+**Concept**: Use Kubernetes CronJob for scheduled execution.
 
+**Key components:**
+- CronJob with schedule spec (e.g., `0 2 * * *`)
+- Secrets for credentials (never hardcode)
+- Resource limits (tool can use significant CPU/memory during 60-120 min run)
+- Job history limits for cleanup
+
+**Pattern:**
 ```yaml
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: cloudzero-azure-insights
+  name: cloudzero-insights
 spec:
-  schedule: "0 2 * * *"  # 2 AM daily
-  successfulJobsHistoryLimit: 3
-  failedJobsHistoryLimit: 3
+  schedule: "0 2 * * *"
   jobTemplate:
     spec:
       template:
@@ -87,147 +101,37 @@ spec:
           restartPolicy: Never
           containers:
           - name: insights
-            image: cloudzero/azure-insights:latest
+            image: <your-image>
             command: ["python", "./app/app.py", "--transmit"]
-            env:
-            - name: AZURE_CLIENT_ID
-              valueFrom:
-                secretKeyRef:
-                  name: azure-credentials
-                  key: client-id
-            - name: AZURE_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: azure-credentials
-                  key: client-secret
-            - name: AZURE_TENANT_ID
-              valueFrom:
-                secretKeyRef:
-                  name: azure-credentials
-                  key: tenant-id
-            - name: CLOUDZERO_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: cloudzero-credentials
-                  key: api-key
+            envFrom:
+            - secretRef:
+                name: cloudzero-azure-credentials
 ```
 
-Create secrets:
+**Monitoring:**
+- Check CronJob status: `kubectl get cronjobs`
+- View job history: `kubectl get jobs`
+- View logs: `kubectl logs job/<job-name>`
 
+### Cron Jobs
+
+**Concept**: Traditional cron on a VM running Docker.
+
+**Pattern:**
 ```bash
-# Azure credentials
-kubectl create secret generic azure-credentials \
-  --from-literal=client-id=$AZURE_CLIENT_ID \
-  --from-literal=client-secret=$AZURE_CLIENT_SECRET \
-  --from-literal=tenant-id=$AZURE_TENANT_ID
-
-# CloudZero credentials
-kubectl create secret generic cloudzero-credentials \
-  --from-literal=api-key=$CLOUDZERO_API_KEY
-```
-
-Deploy:
-
-```bash
-kubectl apply -f cloudzero-insights-cronjob.yaml
-```
-
-Monitor:
-
-```bash
-# View CronJob status
-kubectl get cronjobs
-
-# View recent job runs
-kubectl get jobs --selector=job-name=cloudzero-azure-insights
-
-# View logs from latest run
-kubectl logs -l job-name=cloudzero-azure-insights --tail=100
-```
-
-### Docker with Cron
-
-**Best for**: VM or on-premise deployments
-
-Create a cron wrapper script `run-insights.sh`:
-
-```bash
+# Wrapper script (run-insights.sh)
 #!/bin/bash
-set -e
+docker run --rm --env-file /path/to/.env <your-image> python ./app/app.py --transmit
 
-# Load environment variables
-source /path/to/.env
-
-# Run container
-docker run --rm \
-  --env-file /path/to/.env \
-  cloudzero/azure-insights:latest \
-  python ./app/app.py --transmit
-
-# Log completion
-echo "$(date): CloudZero insights sync completed" >> /var/log/cz-insights.log
+# Crontab entry
+0 2 * * * /path/to/run-insights.sh >> /var/log/cz-insights.log 2>&1
 ```
 
-Make it executable:
-
-```bash
-chmod +x run-insights.sh
-```
-
-Add to crontab:
-
-```bash
-# Edit crontab
-crontab -e
-
-# Add line for daily execution at 2 AM
-0 2 * * * /path/to/run-insights.sh 2>&1 | logger -t cloudzero-insights
-```
-
-### GitHub Actions
-
-**Best for**: GitOps workflows
-
-Create `.github/workflows/sync-azure-insights.yml`:
-
-```yaml
-name: Sync Azure Insights to CloudZero
-
-on:
-  schedule:
-    - cron: '0 2 * * *'  # 2 AM daily
-  workflow_dispatch:  # Allow manual trigger
-
-jobs:
-  sync:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Build Docker image
-        run: docker build -t cloudzero-insights .
-
-      - name: Run insights sync
-        env:
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          CLOUDZERO_API_KEY: ${{ secrets.CLOUDZERO_API_KEY }}
-        run: |
-          docker run --rm \
-            -e AZURE_CLIENT_ID \
-            -e AZURE_CLIENT_SECRET \
-            -e AZURE_TENANT_ID \
-            -e CLOUDZERO_API_KEY \
-            cloudzero-insights \
-            python ./app/app.py --transmit
-
-      - name: Log completion
-        run: echo "CloudZero insights sync completed at $(date)"
-```
-
-Configure secrets in GitHub repository settings.
+**Best practices:**
+- Use absolute paths in cron
+- Redirect output to log file
+- Set proper permissions on .env file
+- Consider using `flock` to prevent overlapping runs
 
 ## Performance Considerations
 

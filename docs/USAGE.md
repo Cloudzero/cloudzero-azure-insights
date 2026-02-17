@@ -250,15 +250,37 @@ INFO - Insights transmitted to CloudZero: 42/42
 
 ### Duplicate Detection
 
-The tool prevents duplicates by:
-1. Fetching all existing CloudZero insights with source "Azure Advisor"
-2. Extracting Azure Advisor recommendation IDs from insight descriptions
-3. Filtering out Azure recommendations that already exist
+**How it works:**
+1. Fetches all CloudZero insights (source="Azure Advisor")
+2. Parses insight descriptions to extract Azure Advisor Recommendation IDs
+3. Builds a set of existing recommendation IDs
+4. Filters out Azure recommendations whose ID exists in CloudZero
+5. Only uploads recommendations not yet in CloudZero
+
+**Key insight:** Duplicate detection is based on **Azure Advisor Recommendation ID**, not CloudZero insight ID.
+
+**Example:**
+```
+Azure Advisor Rec ID: abc-123-def
+↓
+Check CloudZero for any insight containing "Azure Advisor Recommendation ID: abc-123-def"
+↓
+Found → Skip (already exists)
+Not found → Upload (create new insight)
+```
 
 **Why this matters:**
-- Running the tool multiple times won't create duplicates
-- Safe to run on a schedule
-- Can re-run after failures without issues
+- ✅ Running the tool multiple times won't create duplicates
+- ✅ Safe to run on a schedule (daily/weekly)
+- ✅ Can re-run after failures without issues
+- ✅ Works during migration from collapsed to 1:1 format
+
+**Works with both formats:**
+- Old format (collapsed): Multiple rec IDs in one insight's description
+- New format (1:1): One rec ID per insight's description
+- Mixed: Handles both during transition
+
+**Performance note:** This requires fetching ALL existing CloudZero insights (60-120 min for 50K insights). This is why we recommend scheduled overnight execution.
 
 ## Best Practices
 
