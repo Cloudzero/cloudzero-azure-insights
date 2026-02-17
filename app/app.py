@@ -414,9 +414,21 @@ def filter_azure_advisor_recs(
 
 def transmit_azure_insights(
     cz_client: CloudZeroClient,
-    recommendations: List[Dict[str, Any]]
+    recommendations: List[Dict[str, Any]],
+    dry_run: bool = False
 ) -> None:
-    logging.info("Transmitting Azure Advisor insights to CloudZero...")
+    """Transmit Azure Advisor insights to CloudZero.
+
+    Args:
+        cz_client: Authenticated CloudZero API client
+        recommendations: List of Azure Advisor recommendations
+        dry_run: If True, preview without actually uploading
+
+    Raises:
+        requests.HTTPError: If CloudZero API call fails
+    """
+    mode = "DRY RUN - Previewing" if dry_run else "Transmitting"
+    logging.info(f"{mode} Azure Advisor insights to CloudZero...")
 
     logging.info("Fetching existing CloudZero Azure insights...")
     cz_insights = get_cloudzero_insights_list(cz_client)
@@ -426,22 +438,32 @@ def transmit_azure_insights(
 
     insights_created = 0
     insights_failed = 0
+
     for rec in collapse_recommendations(filtered_recs).values():
-        response = create_cloudzero_insight(cz_client, rec)
-
-        if "error" in response:
-            logging.info(f"Insight NOT transmitted: {rec['title']}")
-            insights_failed += 1
-
-        else:
-            logging.info(
-                f"Insight transmitted to CloudZero: {response['insight']['title']}"
-            )
+        if dry_run:
+            # Preview mode: just log what would be uploaded
+            desc_preview = rec['description'][:100] + "..." if len(rec['description']) > 100 else rec['description']
+            print(f"\n[DRY RUN] Would upload:")
+            print(f"  Title: {rec['title']}")
+            print(f"  Cost Impact: ${rec['cost_impact']}")
+            print(f"  Category: {rec['category']} | Effort: {rec['effort']}")
+            print(f"  Description: {desc_preview}")
             insights_created += 1
+        else:
+            # Actually upload
+            response = create_cloudzero_insight(cz_client, rec)
 
-    logging.info(
-        f"Insights transmitted to CloudZero: {insights_created}/{insights_created + insights_failed}"
-    )
+            if "error" in response:
+                logging.info(f"Insight NOT transmitted: {rec['title']}")
+                insights_failed += 1
+            else:
+                logging.info(
+                    f"Insight transmitted to CloudZero: {response['insight']['title']}"
+                )
+                insights_created += 1
+
+    summary = f"[DRY RUN] Would upload" if dry_run else "Insights transmitted to CloudZero"
+    logging.info(f"{summary}: {insights_created}/{insights_created + insights_failed}")
 
 
 def convert_to_csv(data: List[Dict[str, Any]]) -> tuple[List[str], List[Dict[str, Any]]]:
@@ -575,12 +597,12 @@ def main(args: argparse.Namespace) -> None:
 
     if args.transmit and args.export_csv:
         # Code to transmit to CloudZero and export to CSV
-        transmit_azure_insights(cz_client, recommendations)
+        transmit_azure_insights(cz_client, recommendations, dry_run=args.dry_run)
         export_to_csv(recommendations)
 
     elif args.transmit:
         # Code to only transmit to CloudZero
-        transmit_azure_insights(cz_client, recommendations)
+        transmit_azure_insights(cz_client, recommendations, dry_run=args.dry_run)
 
     elif args.export_csv:
         # Code to only export to CSV
@@ -599,6 +621,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--list-insights", action="store_true", help="List existing insights from CloudZero"
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Preview what would be uploaded without actually uploading"
     )
 
     args = parser.parse_args()
