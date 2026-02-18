@@ -72,6 +72,9 @@ instance/
 # Sphinx documentation
 docs/_build/
 
+# Internal documentation (AI-assisted design docs, implementation guides)
+internal-docs/
+
 # PyBuilder
 target/
 
@@ -149,6 +152,7 @@ cython_debug/
 *.dockerignore
 .docker/
 docker-compose*.yml
+.docker-image-built
 
 # Log files
 *.log
